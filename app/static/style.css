@@ -83,16 +83,15 @@ a { color: var(--accent); }
   text-decoration: none;
   font-size: 1rem;
 }
-.brand-mark {
-  display: inline-grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  background: var(--accent);
-  color: #fff;
-  font-weight: 700;
-  font-size: .95rem;
+.brand-logo {
+  display: block;
+  height: 42px;
+  width: auto;
+}
+.brand-title {
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+  line-height: 1.2;
 }
 .chip {
   font-size: .8rem;
