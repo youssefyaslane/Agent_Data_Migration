@@ -1,0 +1,9 @@
+.venv/
+.git/
+__pycache__/
+*.pyc
+data/
+output/
+*.xlsx
+.env
+README.md

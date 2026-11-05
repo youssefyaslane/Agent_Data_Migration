@@ -1,0 +1,26 @@
+services:
+  app:
+    build: .
+    image: agent-data-migration:latest
+    container_name: agent-data-migration
+    restart: unless-stopped
+    # Réseau de la machine : l'app joint Ollama sur 127.0.0.1:11434
+    # et répond directement sur le port 8080 de la machine.
+    network_mode: host
+    # Même utilisateur que sur la machine : les fichiers de data/ et output/ restent à lui
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    environment:
+      PORT: ${PORT:-8080}
+      HOST: ${HOST:-0.0.0.0}
+      THREADS: ${THREADS:-8}
+      OLLAMA_URL: ${OLLAMA_URL:-http://127.0.0.1:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma4:e2b}
+    volumes:
+      - ./data:/app/data        # name_mapping.json (noms validés)
+      - ./output:/app/output    # fichiers générés
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\", \"8080\")}/', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

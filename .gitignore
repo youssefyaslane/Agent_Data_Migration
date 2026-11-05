@@ -7,3 +7,6 @@ __pycache__/
 data/
 output/
 *.xlsx
+
+# Config locale Docker
+.env

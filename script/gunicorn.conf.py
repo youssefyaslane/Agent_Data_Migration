@@ -1,7 +1,7 @@
 """Configuration Gunicorn (production).
 
 Lancer depuis la racine du projet :
-    .venv/bin/gunicorn -c gunicorn.conf.py
+    gunicorn -c script/gunicorn.conf.py   (ou : docker compose up -d)
 puis ouvrir http://<serveur>:8080
 
 Un seul worker : l'état des traitements en cours (JOBS) est gardé en mémoire
@@ -12,7 +12,7 @@ par les threads.
 import os
 
 wsgi_app = "app:app"
-chdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app")
+chdir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app")
 
 bind = f"{os.environ.get('HOST', '0.0.0.0')}:{os.environ.get('PORT', '8080')}"
 workers = 1

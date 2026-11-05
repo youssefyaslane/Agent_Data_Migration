@@ -12,9 +12,9 @@ Parcours :
 Pages HTML : app/templates/ · CSS et JS : app/static/
 
 Lancer (production, Gunicorn) :
-    .venv/bin/gunicorn -c gunicorn.conf.py
+    docker compose up -d   (ou : gunicorn -c script/gunicorn.conf.py)
 Lancer (développement, serveur Flask) :
-    .venv/bin/python app/app.py
+    python app/app.py
 puis ouvrir http://127.0.0.1:8080   (autre port : variable PORT)
 Modèle : OLLAMA_MODEL (défaut gemma4:e2b), serveur : OLLAMA_URL (défaut http://127.0.0.1:11434)
 """

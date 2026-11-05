@@ -68,31 +68,33 @@ ce mélange, lit le texte en `MM/JJ/AAAA` et remet jour et mois des dates conver
 
 ## Installation
 
-Prérequis : Python 3.10+ et [Ollama](https://ollama.com) avec le modèle `gemma4:e2b`.
+Prérequis : Docker avec Docker Compose, et [Ollama](https://ollama.com) installé sur la machine
+avec le modèle `gemma4:e2b`.
 
 ```bash
 git clone https://github.com/youssefyaslane/Agent_Data_Migration.git
 cd Agent_Data_Migration
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
 ollama pull gemma4:e2b
+cp .env.example .env    # puis mettre APP_UID / APP_GID = résultat de `id -u` / `id -g`
+mkdir -p data output
+docker compose up -d --build
 ```
 
 ## Utilisation
 
-### App web
-
-En production, avec Gunicorn :
+### App web (Docker)
 
 ```bash
-.venv/bin/gunicorn -c gunicorn.conf.py
+docker compose up -d --build   # construire et démarrer (aussi après un git pull)
+docker compose logs -f         # suivre les logs
+docker compose down            # arrêter
 ```
 
-En développement, avec le serveur Flask :
-
-```bash
-.venv/bin/python app/app.py
-```
+Le conteneur lance l'app avec Gunicorn (`script/gunicorn.conf.py`) et redémarre tout seul
+avec la machine. Il utilise le réseau de la machine (`network_mode: host`) : il joint Ollama
+sur `127.0.0.1:11434` et répond directement sur le port 8080. Les dossiers `data/`
+(noms validés) et `output/` (fichiers générés) sont montés depuis la machine : ils sont
+conservés quand le conteneur est reconstruit.
 
 Puis ouvrir http://127.0.0.1:8080 :
 
@@ -102,14 +104,14 @@ Puis ouvrir http://127.0.0.1:8080 :
    La case « Afficher aussi les noms déjà validés » permet de corriger un ancien choix.
 4. Télécharger l'Excel. La page affiche le nombre de lignes par Status.
 
-### Ligne de commande
+### Ligne de commande (dans le conteneur)
 
 ```bash
 # fichiers par défaut : data/sap.xlsx + data/QBs.xlsx -> output/output.xlsx
-.venv/bin/python script/merge_files.py
+docker compose exec app python script/merge_files.py
 
 # fichiers et mapping au choix
-.venv/bin/python script/merge_files.py --sap data/sap.xlsx --qbs data/QBs.xlsx \
+docker compose exec app python script/merge_files.py --sap data/sap.xlsx --qbs data/QBs.xlsx \
     --out output/output.xlsx --mapping data/name_mapping.json
 ```
 
@@ -118,8 +120,11 @@ sans étape de validation.
 
 ### Configuration
 
+Les variables se règlent dans le fichier `.env` (modèle : `.env.example`).
+
 | Variable | Défaut | Rôle |
 |----------|--------|------|
+| `APP_UID` / `APP_GID` | `1000` | Utilisateur du conteneur (propriétaire des fichiers de `data/` et `output/`) |
 | `PORT` | `8080` | Port de l'app web |
 | `HOST` | `0.0.0.0` | Adresse d'écoute de Gunicorn |
 | `THREADS` | `8` | Nombre de threads Gunicorn |
@@ -130,7 +135,10 @@ sans étape de validation.
 ## Structure
 
 ```
-gunicorn.conf.py         Configuration Gunicorn (port 8080, 1 worker, threads)
+Dockerfile               Image de l'app (Python 3.12, Gunicorn)
+docker-compose.yml       Service app : port 8080, volumes data/ et output/
+.env.example             Modèle de configuration (.env, non versionné)
+script/gunicorn.conf.py  Configuration Gunicorn (port 8080, 1 worker, threads)
 app/app.py               App Flask (routes : upload, progression, validation, résultat)
 app/templates/           Pages HTML (Jinja) : base, upload, progress, review, result
 app/static/              style.css (design, mode sombre) et app.js (glisser-déposer, filtres, progression)
@@ -145,7 +153,7 @@ par le `.gitignore`.
 
 ### Note sur Gunicorn
 
-`gunicorn.conf.py` lance **un seul worker** avec plusieurs threads. L'état des traitements
+`script/gunicorn.conf.py` lance **un seul worker** avec plusieurs threads. L'état des traitements
 en cours est gardé en mémoire dans le processus : avec plusieurs workers, la page de
 progression pourrait arriver sur un autre processus et répondre 404. Pour plusieurs workers,
 il faudrait stocker cet état hors du processus (Redis, base de données…).
