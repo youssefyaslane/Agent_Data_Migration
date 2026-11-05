@@ -64,7 +64,7 @@ statuts encore vides :
 **Dates QBs.** QuickBooks exporte les dates au format américain `MM/JJ/AAAA`. Si le fichier passe
 par un Excel en français, les dates dont le jour est ≤ 12 sont converties avec jour et mois inversés
 (`10/01/2025` = 1er octobre devient le 10 janvier) et les autres restent en texte. Le script détecte
-ce mélange, lit le texte en `MM/JJ/AAAA` et remet jour et mois des dates converties à l'endroit.
+ce mélange, lit le texte en `MM/JJ/AAAA` et remet jour et mois des dates converties à l'endroit. Dans l'Excel de sortie, les dates sont affichées en `JJ/MM/AAAA`.
 
 ## Installation
 

@@ -38,7 +38,7 @@ SYSTEM_NAMES = {"sap": "SAP"}
 
 
 NUM_FMT = '_(* #,##0.00_);_(* \\(#,##0.00\\);_(* "-"??_);_(@_)'
-DATE_FMT = "mm/dd/yyyy"
+DATE_FMT = "dd/mm/yyyy"
 
 
 def col(name: str) -> str:
