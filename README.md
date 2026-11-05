@@ -82,11 +82,19 @@ ollama pull gemma4:e2b
 
 ### App web
 
+En production, avec Gunicorn :
+
+```bash
+.venv/bin/gunicorn -c gunicorn.conf.py
+```
+
+En développement, avec le serveur Flask :
+
 ```bash
 .venv/bin/python app/app.py
 ```
 
-Puis ouvrir http://127.0.0.1:5050 :
+Puis ouvrir http://127.0.0.1:8080 :
 
 1. Charger le fichier SAP et le fichier QBs.
 2. Attendre la fin du mapping (seuls les nouveaux noms sont envoyés au LLM).
@@ -112,13 +120,17 @@ sans étape de validation.
 
 | Variable | Défaut | Rôle |
 |----------|--------|------|
-| `PORT` | `5050` | Port de l'app web |
+| `PORT` | `8080` | Port de l'app web |
+| `HOST` | `0.0.0.0` | Adresse d'écoute de Gunicorn |
+| `THREADS` | `8` | Nombre de threads Gunicorn |
+| `LOG_LEVEL` | `info` | Niveau de logs Gunicorn |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Serveur Ollama |
 | `OLLAMA_MODEL` | `gemma4:e2b` | Modèle utilisé pour le mapping |
 
 ## Structure
 
 ```
+gunicorn.conf.py         Configuration Gunicorn (port 8080, 1 worker, threads)
 app/app.py               App Flask (routes : upload, progression, validation, résultat)
 app/templates/           Pages HTML (Jinja) : base, upload, progress, review, result
 app/static/              style.css (design, mode sombre) et app.js (glisser-déposer, filtres, progression)
@@ -130,3 +142,10 @@ output/                  Fichiers générés (non versionnés)
 
 Les dossiers `data/` et `output/` contiennent des données comptables : ils sont exclus du dépôt
 par le `.gitignore`.
+
+### Note sur Gunicorn
+
+`gunicorn.conf.py` lance **un seul worker** avec plusieurs threads. L'état des traitements
+en cours est gardé en mémoire dans le processus : avec plusieurs workers, la page de
+progression pourrait arriver sur un autre processus et répondre 404. Pour plusieurs workers,
+il faudrait stocker cet état hors du processus (Redis, base de données…).

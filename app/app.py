@@ -11,9 +11,11 @@ Parcours :
 
 Pages HTML : app/templates/ · CSS et JS : app/static/
 
-Lancer :
+Lancer (production, Gunicorn) :
+    .venv/bin/gunicorn -c gunicorn.conf.py
+Lancer (développement, serveur Flask) :
     .venv/bin/python app/app.py
-puis ouvrir http://127.0.0.1:5050   (autre port : PORT=8080 .venv/bin/python app/app.py)
+puis ouvrir http://127.0.0.1:8080   (autre port : variable PORT)
 Modèle : OLLAMA_MODEL (défaut gemma4:e2b), serveur : OLLAMA_URL (défaut http://127.0.0.1:11434)
 """
 import os
@@ -207,4 +209,4 @@ def download(job):
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=int(os.environ.get("PORT", 5050)), debug=False, threaded=True)
+    app.run(host="127.0.0.1", port=int(os.environ.get("PORT", 8080)), debug=False, threaded=True)
