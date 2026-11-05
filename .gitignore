@@ -1,0 +1,9 @@
+# Environnement Python
+.venv/
+__pycache__/
+*.pyc
+
+# Données comptables : ne pas publier
+data/
+output/
+*.xlsx
