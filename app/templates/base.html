@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Réconciliation SAP / QBs{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="{{ url_for('index') }}">
+        <span class="brand-mark" aria-hidden="true">⇄</span>
+        <span>Réconciliation <strong>SAP / QBs</strong></span>
+      </a>
+      <span class="chip" title="Modèle Ollama utilisé pour le mapping des noms">LLM : {{ model }}</span>
+    </div>
+  </header>
+
+  <main>
+    <ol class="stepper" aria-label="Étapes">
+      {% for label in ['Fichiers', 'Mapping des noms', 'Validation', 'Résultat'] %}
+      <li class="{{ 'done' if loop.index < step else 'current' if loop.index == step }}"
+          {% if loop.index == step %}aria-current="step"{% endif %}>
+        <span class="dot">{{ '✓' if loop.index < step else loop.index }}</span>{{ label }}
+      </li>
+      {% endfor %}
+    </ol>
+
+    {% if error %}
+    <div class="alert" role="alert"><strong>Erreur :</strong> {{ error }}</div>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

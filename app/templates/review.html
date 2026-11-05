@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="intro">
+  {% if n_llm %}
+  <h1>{{ n_llm }} nouveau{{ 'x' if n_llm > 1 }} fournisseur{{ 's' if n_llm > 1 }} QBs à vérifier</h1>
+  <p class="muted">Vérifie les propositions du LLM, corrige si besoin, puis enregistre.
+    Les lignes surlignées n'ont pas de fournisseur SAP correspondant.</p>
+  {% else %}
+  <h1>Aucun nouveau fournisseur</h1>
+  <p class="muted">Les {{ n_saved }} fournisseurs QBs sont déjà validés : rien à demander au LLM.
+    Tu peux calculer directement.</p>
+  {% endif %}
+</section>
+
+<div class="stats">
+  <div class="stat accent">
+    <span class="stat-num">{{ n_llm }}</span>
+    <span class="stat-label">Nouveaux</span>
+    <span class="stat-hint">proposés par le LLM</span>
+  </div>
+  <div class="stat ok">
+    <span class="stat-num">{{ n_saved }}</span>
+    <span class="stat-label">Déjà validés</span>
+    <span class="stat-hint">repris sans LLM</span>
+  </div>
+  <div class="stat warn">
+    <span class="stat-num">{{ n_none_new }}</span>
+    <span class="stat-label">Sans correspondance</span>
+    <span class="stat-hint">parmi les nouveaux</span>
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('save', job=job) }}" data-busy="Calcul en cours…">
+  <div class="card">
+    <h2>Fournisseurs QBs → fournisseurs SAP</h2>
+    <p class="muted">Choisis le fournisseur SAP qui correspond à chaque nom QBs.</p>
+
+    <div class="toolbar">
+      <input type="search" id="search" placeholder="Rechercher un fournisseur…" aria-label="Rechercher un fournisseur">
+      <label class="toggle"><input type="checkbox" id="showSaved" {{ 'checked' if not n_llm }}> Afficher les noms déjà validés</label>
+      <label class="toggle"><input type="checkbox" id="onlyNone"> Seulement sans correspondance</label>
+    </div>
+
+    <table id="map">
+      <thead>
+        <tr><th>Fournisseur QBs</th><th>Fournisseur SAP correspondant</th><th class="hide-sm">Source</th></tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr class="{{ 'none' if not r.sap }}" data-saved="{{ 1 if r.source == 'enregistré' else 0 }}">
+          <td class="name">{{ r.qbs }}<input type="hidden" name="q{{ loop.index0 }}" value="{{ r.qbs }}"></td>
+          <td>
+            <select name="m{{ loop.index0 }}" aria-label="Fournisseur SAP pour {{ r.qbs }}">
+              <option value="">— aucun (nouveau fournisseur) —</option>
+              {% for s in sap_names %}<option value="{{ s }}" {{ 'selected' if s == r.sap }}>{{ s }}</option>{% endfor %}
+            </select>
+          </td>
+          <td class="hide-sm"><span class="badge {{ 'saved' if r.source == 'enregistré' }}">{{ r.source }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="empty muted" id="noResult" hidden>Aucune ligne à afficher avec ces filtres.</p>
+  </div>
+
+  {% if aliases %}
+  <div class="card">
+    <h2>Fiches SAP en double ?</h2>
+    <p class="muted">Ces fournisseurs SAP n'ont pas de nom QBs. Si une fiche est un doublon d'une autre
+      (ex. « GVA Rwanda » et « GVA RWANDA LTD »), choisis la fiche principale ; sinon laisse « non ».</p>
+
+    <table id="alias">
+      <thead>
+        <tr><th>Fournisseur SAP</th><th>Même fournisseur que</th><th class="hide-sm">Source</th></tr>
+      </thead>
+      <tbody>
+        {% for a in aliases %}
+        <tr data-saved="{{ 1 if a.source == 'enregistré' else 0 }}">
+          <td class="name">{{ a.name }}<input type="hidden" name="n{{ loop.index0 }}" value="{{ a.name }}"></td>
+          <td>
+            <select name="a{{ loop.index0 }}" aria-label="Fiche principale pour {{ a.name }}">
+              <option value="">— non, fournisseur distinct —</option>
+              {% for s in sap_names if s != a.name %}<option value="{{ s }}" {{ 'selected' if s == a.sap }}>{{ s }}</option>{% endfor %}
+            </select>
+          </td>
+          <td class="hide-sm"><span class="badge {{ 'saved' if a.source == 'enregistré' }}">{{ a.source }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="actionbar">
+    <span class="muted">Le mapping est enregistré puis le fichier Excel est calculé.</span>
+    <div class="actions">
+      <a class="btn" href="{{ url_for('index') }}">Annuler</a>
+      <button class="btn primary" type="submit">Enregistrer et calculer →</button>
+    </div>
+  </div>
+</form>
+{% endblock %}

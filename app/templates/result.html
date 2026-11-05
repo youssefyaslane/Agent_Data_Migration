@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="intro">
+  <h1>Calcul terminé</h1>
+  <p class="muted">{{ n_sap }} lignes SAP + {{ n_qbs }} lignes QBs traitées. Le mapping validé est enregistré
+    et sera repris au prochain traitement.</p>
+</section>
+
+<div class="stats">
+  {% for s in statuses %}
+  <div class="stat {{ status_class[s] }}">
+    <span class="stat-num">{{ totals[s] }}</span>
+    <span class="stat-label">{{ s }}</span>
+    <span class="stat-hint">{{ status_hint[s] }}</span>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h2>Détail par système</h2>
+  <p class="muted">Nombre de lignes par Status dans le fichier de sortie.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>System</th>
+        {% for s in statuses %}<th class="num"><span class="badge {{ status_class[s] }}">{{ s }}</span></th>{% endfor %}
+        <th class="num">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for sys, counts in table.items() %}
+      <tr>
+        <td><span class="badge sys-{{ sys|lower }}">{{ sys }}</span></td>
+        {% for s in statuses %}<td class="num">{{ counts.get(s, 0) }}</td>{% endfor %}
+        <td class="num"><strong>{{ counts.values()|sum }}</strong></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="actions">
+    <a class="btn primary" href="{{ url_for('download', job=job) }}">↓ Télécharger l'Excel</a>
+    <a class="btn" href="{{ url_for('review', job=job) }}">Modifier le mapping</a>
+    <a class="btn" href="{{ url_for('index') }}">Nouveau traitement</a>
+  </div>
+</div>
+{% endblock %}

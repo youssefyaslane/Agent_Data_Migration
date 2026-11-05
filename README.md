@@ -114,7 +114,9 @@ sans étape de validation.
 ## Structure
 
 ```
-app/app.py               App Flask (upload, validation du mapping, résultat)
+app/app.py               App Flask (routes : upload, progression, validation, résultat)
+app/templates/           Pages HTML (Jinja) : base, upload, progress, review, result
+app/static/              style.css (design, mode sombre) et app.js (glisser-déposer, filtres, progression)
 script/merge_files.py    Fusion, deuxieme_name, calcul du Status, écriture de l'Excel
 script/name_mapping.py   Appels au LLM et mémoire des noms validés
 data/                    Fichiers d'entrée et name_mapping.json (non versionnés)

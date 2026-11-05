@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="intro">
+  <h1>Charger les exports</h1>
+  <p class="muted">Dépose l'export SAP et l'export QuickBooks. Les fournisseurs déjà validés sont
+    repris directement, seuls les nouveaux noms sont envoyés au LLM.</p>
+</section>
+
+<form class="card" method="post" enctype="multipart/form-data" data-busy="Envoi…">
+  <div class="dropzones">
+    <label class="dropzone" for="sap">
+      <span class="dz-tag sap">SAP</span>
+      <span class="dz-title">Fichier SAP</span>
+      <span class="dz-file" data-empty="Clique ou glisse un fichier .xlsx">Clique ou glisse un fichier .xlsx</span>
+      <span class="dz-hint">Supplier, Supplier Name, Journal Entry Date, Journal Entry,
+        Amount (CoCode Crcy), Clearing Status</span>
+      <input id="sap" name="sap" type="file" accept=".xlsx" required>
+    </label>
+
+    <label class="dropzone" for="qbs">
+      <span class="dz-tag qbs">QBs</span>
+      <span class="dz-title">Fichier QuickBooks</span>
+      <span class="dz-file" data-empty="Clique ou glisse un fichier .xlsx">Clique ou glisse un fichier .xlsx</span>
+      <span class="dz-hint">Name, Date, Memo, Debit, Credit</span>
+      <input id="qbs" name="qbs" type="file" accept=".xlsx" required>
+    </label>
+  </div>
+
+  <div class="actions">
+    <button class="btn primary" type="submit">Lancer le mapping des noms →</button>
+  </div>
+</form>
+{% endblock %}
