@@ -61,6 +61,11 @@ statuts encore vides :
 | SAP (`.xlsx`) | `Supplier`, `Supplier Name`, `Journal Entry Date`, `Journal Entry`, `Amount (CoCode Crcy)`, `Clearing Status` |
 | QBs (`.xlsx`) | `Name`, `Date`, `Memo`, `Debit`, `Credit` (montant = Debit − Credit) |
 
+**Dates QBs.** QuickBooks exporte les dates au format américain `MM/JJ/AAAA`. Si le fichier passe
+par un Excel en français, les dates dont le jour est ≤ 12 sont converties avec jour et mois inversés
+(`10/01/2025` = 1er octobre devient le 10 janvier) et les autres restent en texte. Le script détecte
+ce mélange, lit le texte en `MM/JJ/AAAA` et remet jour et mois des dates converties à l'endroit.
+
 ## Installation
 
 Prérequis : Python 3.10+ et [Ollama](https://ollama.com) avec le modèle `gemma4:e2b`.

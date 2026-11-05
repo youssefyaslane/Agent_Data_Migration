@@ -71,6 +71,24 @@ def load_sap(path: Path) -> pd.DataFrame:
     })
 
 
+def parse_us_dates(col: pd.Series) -> pd.Series:
+    """Dates exportées au format américain MM/JJ/AAAA (cas de QuickBooks).
+
+    Si le fichier a été ouvert dans un Excel réglé en français, Excel a converti
+    en vraies dates celles dont le jour est <= 12, en inversant jour et mois
+    (10/01/2025 = 1er octobre devient le 10 janvier), et laissé les autres en
+    texte (09/26/2025 n'existe pas en JJ/MM). On lit donc le texte en MM/JJ/AAAA
+    et, quand on voit ce mélange, on remet jour et mois des vraies dates à l'endroit.
+    """
+    is_text = col.map(lambda v: isinstance(v, str))
+    text = pd.to_datetime(col[is_text].str.strip(), format="%m/%d/%Y", errors="coerce")
+    real = pd.to_datetime(col[~is_text], errors="coerce")
+    known = real.dropna()
+    if is_text.any() and len(known) and (known.dt.day <= 12).all():
+        real = real.map(lambda d: d.replace(month=d.day, day=d.month) if pd.notna(d) else d)
+    return pd.concat([text, real]).reindex(col.index)
+
+
 def load_qbs(path: Path) -> pd.DataFrame:
     df = pd.read_excel(path)
     debit = pd.to_numeric(df["Debit"], errors="coerce").fillna(0)
@@ -78,7 +96,7 @@ def load_qbs(path: Path) -> pd.DataFrame:
     return pd.DataFrame({
         "Supplier": None,
         "Supplier Name": df["Name"],
-        "Journal Entry Date": pd.to_datetime(df["Date"]),
+        "Journal Entry Date": parse_us_dates(df["Date"]),
         "Journal Entry": df["Memo"],
         "Amount (CoCode Crcy)": (debit - credit).round(2),  # = Net (Debit - Credit)
         "System": system_name(path),
