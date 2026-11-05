@@ -1,0 +1,125 @@
+# Agent Data Migration — Réconciliation SAP / QuickBooks
+
+Outil de rapprochement des écritures fournisseurs entre un export **SAP** et un export **QuickBooks (QBs)**.
+Il fusionne les deux fichiers Excel, rapproche les noms de fournisseurs avec un LLM local (Ollama)
+et calcule un statut pour chaque ligne : `OK`, `Reversed`, `NOK` ou `0`.
+
+Deux façons de l'utiliser :
+
+- **App web Flask** : upload des deux fichiers, validation du mapping des noms, téléchargement du résultat.
+- **Script en ligne de commande** : `script/merge_files.py`.
+
+## Fonctionnement
+
+```
+Fichier SAP ─┐
+             ├─> Noms fournisseurs uniques ─> Mapping des noms ─> deuxieme_name ─> Status ─> output.xlsx
+Fichier QBs ─┘                                 (mémorisé ou LLM)
+```
+
+### 1. Mapping des noms (`deuxieme_name`)
+
+Un même fournisseur n'a pas toujours le même nom dans les deux systèmes
+(ex. `Netis Holding Limited` dans SAP, `NETIS HOLDING USD` dans QBs).
+La colonne `deuxieme_name` donne un nom commun : le nom SAP de référence.
+
+- Les noms fournisseurs uniques des deux fichiers sont extraits (sans doublons).
+- Pour chaque **nouveau** nom QBs, le LLM (`gemma4:e2b` via Ollama) choisit le nom SAP correspondant,
+  ou « aucun » si le fournisseur n'existe pas dans SAP.
+- Le LLM signale aussi les fiches SAP en double (ex. `GVA Rwanda` / `GVA RWANDA LTD`).
+- Tu valides ou corriges dans l'app. Les choix sont enregistrés dans `data/name_mapping.json`.
+- **Le mapping se fait une seule fois par nom** : au traitement suivant, les noms déjà validés sont
+  repris directement, seuls les nouveaux noms passent par le LLM.
+
+### 2. Calcul du Status
+
+Une ligne est comparée sur la clé **`deuxieme_name` + `Journal Entry Date` + `Amount (CoCode Crcy)`**
+(montant signé, au centime près). Les règles s'appliquent dans l'ordre, chacune ne remplit que les
+statuts encore vides :
+
+| # | Lignes | Règle | Status |
+|---|--------|-------|--------|
+| 1 | SAP + QBs | Appariement 1 pour 1 : une ligne SAP et une ligne QBs avec la même clé | `OK` |
+| 2 | SAP | Lignes vides groupées par `Supplier` : la somme des montants = 0 | `Reversed` |
+| 3 | QBs | Aucune ligne SAP avec la même clé | `NOK` |
+| 4 | SAP | Par `Supplier`, triées par date : deux lignes de montants opposés (x / -x) sont annulées, on recommence jusqu'à ce qu'il n'y ait plus de paire | `Reversed`, le reste `NOK` |
+| 5 | SAP + QBs | `Amount (CoCode Crcy)` = 0 (remplace le statut précédent) | `0` |
+
+### 3. Fichier de sortie
+
+`output.xlsx` contient les colonnes :
+
+`Supplier` · `Supplier Name` · `deuxieme_name` · `Journal Entry Date` · `Journal Entry` ·
+`Amount (CoCode Crcy)` · `System` · `Status` · `ABS`
+
+`System` vaut `SAP` ou `QBs` selon le fichier d'origine. `ABS` est une formule Excel (`=ABS(montant)`).
+
+## Fichiers d'entrée
+
+| Fichier | Colonnes utilisées |
+|---------|--------------------|
+| SAP (`.xlsx`) | `Supplier`, `Supplier Name`, `Journal Entry Date`, `Journal Entry`, `Amount (CoCode Crcy)`, `Clearing Status` |
+| QBs (`.xlsx`) | `Name`, `Date`, `Memo`, `Debit`, `Credit` (montant = Debit − Credit) |
+
+## Installation
+
+Prérequis : Python 3.10+ et [Ollama](https://ollama.com) avec le modèle `gemma4:e2b`.
+
+```bash
+git clone https://github.com/youssefyaslane/Agent_Data_Migration.git
+cd Agent_Data_Migration
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+ollama pull gemma4:e2b
+```
+
+## Utilisation
+
+### App web
+
+```bash
+.venv/bin/python app/app.py
+```
+
+Puis ouvrir http://127.0.0.1:5050 :
+
+1. Charger le fichier SAP et le fichier QBs.
+2. Attendre la fin du mapping (seuls les nouveaux noms sont envoyés au LLM).
+3. Vérifier ou corriger les correspondances, puis **Enregistrer et calculer**.
+   La case « Afficher aussi les noms déjà validés » permet de corriger un ancien choix.
+4. Télécharger l'Excel. La page affiche le nombre de lignes par Status.
+
+### Ligne de commande
+
+```bash
+# fichiers par défaut : data/sap.xlsx + data/QBs.xlsx -> output/output.xlsx
+.venv/bin/python script/merge_files.py
+
+# fichiers et mapping au choix
+.venv/bin/python script/merge_files.py --sap data/sap.xlsx --qbs data/QBs.xlsx \
+    --out output/output.xlsx --mapping data/name_mapping.json
+```
+
+Sans `--mapping`, le script reprend les noms enregistrés et demande les nouveaux au LLM,
+sans étape de validation.
+
+### Configuration
+
+| Variable | Défaut | Rôle |
+|----------|--------|------|
+| `PORT` | `5050` | Port de l'app web |
+| `OLLAMA_URL` | `http://127.0.0.1:11434` | Serveur Ollama |
+| `OLLAMA_MODEL` | `gemma4:e2b` | Modèle utilisé pour le mapping |
+
+## Structure
+
+```
+app/app.py               App Flask (upload, validation du mapping, résultat)
+script/merge_files.py    Fusion, deuxieme_name, calcul du Status, écriture de l'Excel
+script/name_mapping.py   Appels au LLM et mémoire des noms validés
+data/                    Fichiers d'entrée et name_mapping.json (non versionnés)
+output/                  Fichiers générés (non versionnés)
+```
+
+Les dossiers `data/` et `output/` contiennent des données comptables : ils sont exclus du dépôt
+par le `.gitignore`.
