@@ -4,11 +4,11 @@
 <section class="intro">
   {% if n_llm %}
   <h1>{{ n_llm }} nouveau{{ 'x' if n_llm > 1 }} fournisseur{{ 's' if n_llm > 1 }} QBs à vérifier</h1>
-  <p class="muted">Vérifie les propositions du LLM, corrige si besoin, puis enregistre.
+  <p class="muted">Vérifie les propositions de l’agent IA, corrige si besoin, puis enregistre.
     Les lignes surlignées n'ont pas de fournisseur SAP correspondant.</p>
   {% else %}
   <h1>Aucun nouveau fournisseur</h1>
-  <p class="muted">Les {{ n_saved }} fournisseurs QBs sont déjà validés : rien à demander au LLM.
+  <p class="muted">Les {{ n_saved }} fournisseurs QBs sont déjà validés : rien à demander à l’agent IA.
     Tu peux calculer directement.</p>
   {% endif %}
 </section>
@@ -17,12 +17,12 @@
   <div class="stat accent">
     <span class="stat-num">{{ n_llm }}</span>
     <span class="stat-label">Nouveaux</span>
-    <span class="stat-hint">proposés par le LLM</span>
+    <span class="stat-hint">proposés par l’agent IA</span>
   </div>
   <div class="stat ok">
     <span class="stat-num">{{ n_saved }}</span>
     <span class="stat-label">Déjà validés</span>
-    <span class="stat-hint">repris sans LLM</span>
+    <span class="stat-hint">repris sans l’agent IA</span>
   </div>
   <div class="stat warn">
     <span class="stat-num">{{ n_none_new }}</span>
@@ -56,7 +56,7 @@
               {% for s in sap_names %}<option value="{{ s }}" {{ 'selected' if s == r.sap }}>{{ s }}</option>{% endfor %}
             </select>
           </td>
-          <td class="hide-sm"><span class="badge {{ 'saved' if r.source == 'enregistré' }}">{{ r.source }}</span></td>
+          <td class="hide-sm"><span class="badge {{ 'saved' if r.source == 'enregistré' }}">{{ 'Agent IA' if r.source == 'LLM' else r.source }}</span></td>
         </tr>
         {% endfor %}
       </tbody>
@@ -84,7 +84,7 @@
               {% for s in sap_names if s != a.name %}<option value="{{ s }}" {{ 'selected' if s == a.sap }}>{{ s }}</option>{% endfor %}
             </select>
           </td>
-          <td class="hide-sm"><span class="badge {{ 'saved' if a.source == 'enregistré' }}">{{ a.source }}</span></td>
+          <td class="hide-sm"><span class="badge {{ 'saved' if a.source == 'enregistré' }}">{{ 'Agent IA' if a.source == 'LLM' else a.source }}</span></td>
         </tr>
         {% endfor %}
       </tbody>
