@@ -280,7 +280,7 @@ main {
 .stat.ok { border-left-color: var(--ok); }    .stat.ok .stat-num { color: var(--ok); }
 .stat.rev { border-left-color: var(--rev); }  .stat.rev .stat-num { color: var(--rev); }
 .stat.nok { border-left-color: var(--nok); }  .stat.nok .stat-num { color: var(--nok); }
-.stat.zero { border-left-color: var(--zero); }
+.stat.zero, .stat.empty { border-left-color: var(--zero); }
 .stat.accent { border-left-color: var(--accent); } .stat.accent .stat-num { color: var(--accent); }
 .stat.warn { border-left-color: var(--rev); }
 
@@ -355,6 +355,7 @@ select {
 .badge.rev { background: var(--rev-soft); color: var(--rev); }
 .badge.nok { background: var(--nok-soft); color: var(--nok); }
 .badge.zero, .badge.empty { background: var(--zero-soft); color: var(--zero); }
+.badge.edited { background: var(--rev-soft); color: var(--rev); }
 .badge.sys-sap { background: transparent; color: var(--sap); border: 1px solid var(--sap); }
 .badge.sys-qbs { background: transparent; color: var(--qbs); border: 1px solid var(--qbs); }
 
@@ -383,3 +384,8 @@ select {
   .hide-sm { display: none; }
   .card { padding: 16px; }
 }
+
+/* Étape Score IA */
+.changes .sub { display: block; margin-top: 3px; font-size: .8rem; font-weight: 400; }
+.changes .reason { max-width: 34ch; margin-left: auto; text-align: right; }
+.changes td { vertical-align: top; }

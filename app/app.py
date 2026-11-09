@@ -5,9 +5,11 @@ Parcours :
   2. Noms fournisseurs uniques des deux fichiers -> le LLM propose le nom SAP
      correspondant à chaque nom QBs (en arrière-plan, avec progression),
      puis, pour les fiches SAP non utilisées, s'il s'agit d'un doublon SAP.
-  3. Écran de validation : on corrige si besoin, puis "Enregistrer et calculer".
-  4. Le mapping validé est enregistré (data/name_mapping.json, réutilisé la
-     prochaine fois) et le script calcule l'Excel de sortie.
+  3. Écran de validation : on corrige si besoin, puis "Suivant".
+  4. Score IA : précision de l'agent IA (propositions gardées / modifiées).
+  5. "Enregistrer et calculer" : le mapping validé est enregistré
+     (data/name_mapping.json, réutilisé la prochaine fois) et le script
+     calcule l'Excel de sortie.
 
 Pages HTML : app/templates/ · CSS et JS : app/static/
 
@@ -32,8 +34,8 @@ from flask import (Flask, abort, jsonify, redirect, render_template, request, se
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "script"))
 from merge_files import load_qbs, load_sap, write_output  # noqa: E402
-from name_mapping import (OLLAMA_MODEL, save_store, suggest_mapping,  # noqa: E402
-                          suggest_sap_aliases, unique_names)
+from name_mapping import (OLLAMA_MODEL, judge_choice, save_store,  # noqa: E402
+                          suggest_mapping, suggest_sap_aliases, unique_names)
 
 JOBS_DIR = ROOT / "output" / "app"
 JOBS_DIR.mkdir(parents=True, exist_ok=True)
@@ -93,6 +95,13 @@ def run_mapping(job: str) -> None:
         used = {v["sap"] for v in state["suggestions"].values() if v["sap"]}
         state.update(phase="Doublons SAP", done=0, total=0)
         state["aliases"] = suggest_sap_aliases(sap_names, used, progress)
+        # propositions d'origine de l'agent IA : base du score de précision,
+        # gardées même si l'utilisateur revient modifier le mapping
+        state["ai_map"] = {q: v["sap"] for q, v in state["suggestions"].items() if v["source"] == "LLM"}
+        state["ai_alias"] = {n: v["sap"] for n, v in state["aliases"].items() if v["source"] == "LLM"}
+        # choix déjà enregistrés au chargement : pour détecter leurs modifications
+        state["saved_map"] = {q: v["sap"] for q, v in state["suggestions"].items() if v["source"] != "LLM"}
+        state["saved_alias"] = {n: v["sap"] for n, v in state["aliases"].items() if v["source"] != "LLM"}
         state["state"] = "ready"
     except KeyError as e:
         state.update(state="error", error=f"colonne introuvable : {e}. Vérifie que SAP et QBs "
@@ -135,15 +144,29 @@ def review(job):
         return render_template("progress.html", step=2, job=job)
     if s["state"] == "error":
         return render_template("upload.html", step=1, error=s["error"])
-    sugg = s["suggestions"]
-    rows = [{"qbs": q, "sap": v["sap"], "source": v["source"]} for q, v in sugg.items()]
+    s.pop("pending", None)   # choix modifiables : le score devra être recalculé
+    s.pop("judge", None)
+    sugg, ai_map, ai_alias = s["suggestions"], s["ai_map"], s["ai_alias"]
+    saved_map, saved_alias = s["saved_map"], s["saved_alias"]
+    rows = [{"qbs": q, "sap": v["sap"], "source": v["source"], "is_ai": q in ai_map, "ai": ai_map.get(q),
+             "orig": saved_map.get(q)} for q, v in sugg.items()]
     rows.sort(key=lambda r: (r["source"] != "LLM", r["qbs"]))   # nouveaux noms en premier
-    aliases = [{"name": n, "sap": v["sap"], "source": v["source"]} for n, v in s["aliases"].items()]
+    aliases = [{"name": n, "sap": v["sap"], "source": v["source"], "is_ai": n in ai_alias,
+                "ai": ai_alias.get(n), "orig": saved_alias.get(n)} for n, v in s["aliases"].items()]
     return render_template(
         "review.html", step=3, job=job, rows=rows, aliases=aliases, sap_names=choices(s),
         n_llm=sum(r["source"] == "LLM" for r in rows),
         n_saved=sum(r["source"] == "enregistré" for r in rows),
         n_none_new=sum(not r["sap"] and r["source"] == "LLM" for r in rows))
+
+
+def ai_score(ai_map: dict, mapping: dict, ai_alias: dict, aliases: dict) -> tuple[int, int]:
+    """Précision de l'agent IA : nombre de propositions gardées telles quelles par
+    l'utilisateur, sur le nombre total de propositions (noms QBs + doublons SAP).
+    « Aucune correspondance » gardé tel quel compte aussi comme juste."""
+    pairs = [(v, mapping.get(k)) for k, v in ai_map.items() if k in mapping]
+    pairs += [(v, aliases.get(k)) for k, v in ai_alias.items() if k in aliases]
+    return sum((a or None) == (b or None) for a, b in pairs), len(pairs)
 
 
 def choices(s: dict) -> list[str]:
@@ -153,9 +176,11 @@ def choices(s: dict) -> list[str]:
     return sorted(set(s["sap_names"]) | saved)
 
 
-@app.route("/job/<job>/save", methods=["POST"])
-def save(job):
-    d = job_dir(job)
+@app.route("/job/<job>/score", methods=["POST"])
+def score(job):
+    """Étape 4 : lit les choix de la validation et calcule la précision de
+    l'agent IA (ce que l'utilisateur a gardé / modifié). Rien n'est encore enregistré."""
+    job_dir(job)
     s = JOBS.get(job) or abort(404)
     if s.get("state") != "ready":
         abort(400)
@@ -171,15 +196,97 @@ def save(job):
                 yield name, f.get(f"{value_key}{i}", "")
             i += 1
 
+    # les choix sont gardés dans le traitement : retour possible sur la validation
     mapping = {}
     for q, v in pairs("q", "m", s["suggestions"]):
         mapping[q] = v if v in sap_names else None
-        s["suggestions"][q] = {"sap": mapping[q], "source": "enregistré"}
-
+        s["suggestions"][q] = {"sap": mapping[q], "source": s["suggestions"][q]["source"]}
     aliases = {}
     for n, v in pairs("n", "a", s["aliases"]):
         aliases[n] = v if v in sap_names and v != n else None
-        s["aliases"][n] = {"sap": aliases[n], "source": "enregistré"}
+        s["aliases"][n] = {"sap": aliases[n], "source": s["aliases"][n]["source"]}
+
+    kept, total = ai_score(s["ai_map"], mapping, s["ai_alias"], aliases)
+
+    # toutes les modifications : propositions de l'agent IA changées ET choix déjà
+    # enregistrés changés. Chacune sera vérifiée par l'agent IA (nom de base + nouveau choix).
+    changes = []
+    for kind, label, chosen, refs in (
+            ("Nom QBs", "QuickBooks", mapping, [("Agent IA", s["ai_map"]), ("Enregistré", s["saved_map"])]),
+            ("Doublon SAP", "SAP", aliases, [("Agent IA", s["ai_alias"]), ("Enregistré", s["saved_alias"])])):
+        for origin, ref in refs:
+            for name, before in ref.items():
+                if name in chosen and (before or None) != chosen[name]:
+                    changes.append({"kind": kind, "label": label, "name": name, "origin": origin,
+                                    "before": before, "after": chosen[name]})
+
+    s["pending"] = {"mapping": mapping, "aliases": aliases, "ai_kept": kept, "ai_total": total}
+    judge = {"state": "running", "phase": "Vérification", "done": 0, "total": len(changes), "current": "",
+             "changes": changes}
+    s["judge"] = judge
+    threading.Thread(target=run_judge, args=(judge,), daemon=True).start()
+    return redirect(url_for("score_view", job=job))
+
+
+def run_judge(judge: dict) -> None:
+    """Thread : l'agent IA vérifie chaque choix modifié (nom de base + nouveau choix)."""
+    try:
+        for i, c in enumerate(judge["changes"], start=1):
+            judge["current"] = c["name"]
+            if c["after"]:
+                r = judge_choice(c["name"], c["after"], c["label"])
+                c["ia_score"], c["ia_raison"] = r["score"], r["raison"]
+            else:
+                c["ia_score"], c["ia_raison"] = None, "aucun fournisseur SAP choisi : rien à vérifier"
+            judge["done"] = i
+        judge["state"] = "ready"
+    except Exception as e:
+        judge.update(state="error", error=f"{type(e).__name__} : {e}")
+
+
+def mod_score(changes: list) -> int | None:
+    """Score des modifications : moyenne des scores donnés par l'agent IA."""
+    scores = [c["ia_score"] for c in changes if c.get("ia_score") is not None]
+    return round(sum(scores) / len(scores)) if scores else None
+
+
+@app.route("/job/<job>/score")
+def score_view(job):
+    job_dir(job)
+    s = JOBS.get(job) or abort(404)
+    judge, p = s.get("judge"), s.get("pending")
+    if not judge or not p:
+        return redirect(url_for("review", job=job))
+    if judge["state"] == "running":
+        return render_template("progress.html", step=4, job=job,
+                               progress_url=url_for("score_progress", job=job),
+                               title="Vérification de tes modifications par l’agent IA…",
+                               hint="Chaque choix modifié est envoyé à l’agent IA avec le nom de base.")
+    changes = judge["changes"]
+    p["mod_score"] = mod_score(changes)
+    return render_template("score.html", step=4, job=job, changes=changes, mod=p["mod_score"],
+                           n_checked=sum(c.get("ia_score") is not None for c in changes),
+                           ai_kept=p["ai_kept"], ai_total=p["ai_total"], judge_error=judge.get("error"))
+
+
+@app.route("/job/<job>/score/progress")
+def score_progress(job):
+    s = JOBS.get(job) or abort(404)
+    j = s.get("judge") or abort(404)
+    return jsonify({k: j.get(k) for k in ("state", "phase", "done", "total", "current")})
+
+
+@app.route("/job/<job>/save", methods=["POST"])
+def save(job):
+    """Étape 5 : enregistre le mapping validé à l'étape Score IA et calcule l'Excel."""
+    d = job_dir(job)
+    s = JOBS.get(job) or abort(404)
+    p = s.get("pending")
+    if s.get("state") != "ready" or not p:
+        return redirect(url_for("review", job=job))   # passer d'abord par l'étape Score IA
+    if s.get("judge", {}).get("state") == "running":
+        return redirect(url_for("score_view", job=job))
+    mapping, aliases = p["mapping"], p["aliases"]
 
     save_store(mapping, aliases)  # réutilisé au prochain traitement
     try:
@@ -194,9 +301,10 @@ def save(job):
     statuses = [x for x in STATUS_ORDER if x in present]
     table = {sys_: counts[sys_].to_dict() for sys_ in counts.index.get_level_values(0).unique()}
     totals = {st: sum(c.get(st, 0) for c in table.values()) for st in statuses}
-    return render_template("result.html", step=4, job=job, n_sap=len(sap), n_qbs=len(qbs),
+    return render_template("result.html", step=5, job=job, n_sap=len(sap), n_qbs=len(qbs),
                            statuses=statuses, table=table, totals=totals,
-                           status_class=STATUS_CLASS, status_hint=STATUS_HINT)
+                           status_class=STATUS_CLASS, status_hint=STATUS_HINT,
+                           ai_kept=p["ai_kept"], ai_total=p["ai_total"], mod=p.get("mod_score"))
 
 
 @app.route("/download/<job>")

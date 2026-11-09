@@ -100,9 +100,18 @@ Puis ouvrir http://127.0.0.1:8080 :
 
 1. Charger le fichier SAP et le fichier QBs.
 2. Attendre la fin du mapping (seuls les nouveaux noms sont envoyés au LLM).
-3. Vérifier ou corriger les correspondances, puis **Enregistrer et calculer**.
-   La case « Afficher aussi les noms déjà validés » permet de corriger un ancien choix.
-4. Télécharger l'Excel. La page affiche le nombre de lignes par Status.
+3. Vérifier ou corriger les correspondances (badge « Modifié » sur chaque proposition changée), puis
+   **Suivant**. La case « Afficher aussi les noms déjà validés » permet de corriger un ancien choix.
+4. **Score IA** : chaque choix modifié (proposition de l'agent IA changée ou nom déjà enregistré changé)
+   est envoyé à l'agent IA avec le nom de base ; il renvoie un score de 0 à 100 (même fournisseur ?)
+   et une courte raison. La page affiche :
+   - **Score de tes modifications** : moyenne de ces scores ;
+   - **Précision de l'agent IA** : propositions de l'agent gardées telles quelles / propositions faites
+     (hors noms déjà validés) ;
+   - le tableau des modifications (nom de base, avant, ton choix, score et raison de l'agent IA).
+   Rien n'est encore enregistré : **← Modifier le mapping** revient à la validation,
+   **Enregistrer et calculer** enregistre le mapping et calcule l'Excel.
+5. Télécharger l'Excel. La page affiche le nombre de lignes par Status et rappelle les deux scores.
 
 ### Ligne de commande (dans le conteneur)
 

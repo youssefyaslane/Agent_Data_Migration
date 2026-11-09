@@ -19,7 +19,7 @@
 
   <main>
     <ol class="stepper" aria-label="Étapes">
-      {% for label in ['Fichiers', 'Mapping des noms', 'Validation', 'Résultat'] %}
+      {% for label in ['Fichiers', 'Mapping des noms', 'Validation', 'Score IA', 'Résultat'] %}
       <li class="{{ 'done' if loop.index < step else 'current' if loop.index == step }}"
           {% if loop.index == step %}aria-current="step"{% endif %}>
         <span class="dot">{{ '✓' if loop.index < step else loop.index }}</span>{{ label }}

@@ -76,6 +76,22 @@ if (showSaved) {
   document.querySelectorAll("#map select").forEach((sel) => {
     sel.addEventListener("change", () => sel.closest("tr").classList.toggle("none", !sel.value));
   });
+  // Badge « Modifié » dès qu'un choix diffère de la proposition de l'agent IA
+  // ou du choix déjà enregistré (le score est calculé à l'étape « Score IA »)
+  document.querySelectorAll("select[data-ai], select[data-orig]").forEach((sel) => {
+    const isAi = "ai" in sel.dataset;
+    const ref = isAi ? sel.dataset.ai : sel.dataset.orig;
+    const badge = sel.closest("tr").querySelector(isAi ? ".ai-badge" : ".saved-badge");
+    const label = badge ? (isAi ? "Agent IA" : badge.dataset.label || "enregistré") : "";
+    sel.addEventListener("change", () => {
+      if (!badge) return;
+      const same = sel.value === ref;
+      badge.textContent = same ? label : "Modifié";
+      badge.classList.toggle("edited", !same);
+      if (!isAi) badge.classList.toggle("saved", same);
+    });
+  });
+
   [showSaved, onlyNone].forEach((el) => el.addEventListener("change", apply));
   search.addEventListener("input", apply);
   apply();

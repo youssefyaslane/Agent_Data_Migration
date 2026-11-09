@@ -9,8 +9,11 @@
 """
 import json
 import os
+import re
+import unicodedata
 import urllib.error
 import urllib.request
+from difflib import SequenceMatcher
 from pathlib import Path
 
 import pandas as pd
@@ -91,6 +94,74 @@ def ask_llm(name: str, candidates: list[str], system: str, label: str) -> str | 
         raise RuntimeError(f"Ollama injoignable sur {OLLAMA_URL} ({e.reason}). "
                            "Vérifie qu'Ollama tourne.") from None
     return answer if answer in candidates else None
+
+
+JUDGE_PROMPT = """You check supplier name matches for an accounting reconciliation.
+You get a base supplier name and the name a user chose as its match.
+Rate from 0 to 100 how likely both names refer to the same company:
+100 = certainly the same company (same name, abbreviation, legal suffix such as
+LTD / Limited / SARL, typo, word order, accents or case only differ);
+50 = possible but doubtful; 0 = clearly different companies.
+Give a short reason in French (one sentence)."""
+
+
+def judge_choice(base: str, choice: str, label: str = "QuickBooks") -> dict:
+    """L'agent IA juge un choix fait à la main : {"score": 0..100, "raison": str}."""
+    schema = {
+        "type": "object",
+        "properties": {"score": {"type": "integer", "minimum": 0, "maximum": 100},
+                       "raison": {"type": "string"}},
+        "required": ["score", "raison"],
+    }
+    body = {
+        "model": OLLAMA_MODEL,
+        "stream": False,
+        "think": False,
+        "format": schema,
+        "options": {"temperature": 0, "num_ctx": 2048},
+        "messages": [
+            {"role": "system", "content": JUDGE_PROMPT},
+            {"role": "user", "content": f"Base {label} supplier: {base}\nChosen SAP supplier: {choice}"},
+        ],
+    }
+    req = urllib.request.Request(f"{OLLAMA_URL}/api/chat", json.dumps(body).encode(),
+                                 {"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=600) as r:
+            answer = json.loads(json.load(r)["message"]["content"])
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Ollama injoignable sur {OLLAMA_URL} ({e.reason}). "
+                           "Vérifie qu'Ollama tourne.") from None
+    score = max(0, min(100, int(answer.get("score", 0))))
+    raison = str(answer.get("raison", "")).strip()
+    # garde-fou : le petit modèle donne parfois un score élevé à deux noms sans
+    # aucun rapport. Sans mot distinctif commun, le score est plafonné.
+    if score > JUDGE_CAP and not shares_word(base, choice):
+        score = JUDGE_CAP
+        raison += f" (score plafonné à {JUDGE_CAP} : aucun mot distinctif en commun)"
+    return {"score": score, "raison": raison}
+
+
+JUDGE_CAP = 25
+GENERIC_WORDS = {"ltd", "limited", "co", "company", "cie", "sarl", "sa", "plc", "inc", "llc", "group",
+                 "groupe", "rwanda", "rw", "the", "and", "et", "de", "du", "des", "la", "le"}
+
+
+def distinctive_words(name: str) -> set:
+    words = re.sub(r"[^0-9a-z]+", " ", unicodedata.normalize("NFKD", name.lower())
+                   .encode("ascii", "ignore").decode()).split()
+    return {w for w in words if w not in GENERIC_WORDS}
+
+
+def shares_word(a: str, b: str) -> bool:
+    """Au moins un mot distinctif commun (ou l'un contient l'autre : RWANDACELL / MTN…),
+    ou des noms très proches une fois les mots génériques retirés."""
+    wa, wb = distinctive_words(a), distinctive_words(b)
+    if not wa or not wb:
+        return True   # rien de distinctif à comparer : on laisse le score de l'agent
+    if wa & wb or any(x in y or y in x for x in wa for y in wb if min(len(x), len(y)) >= 3):
+        return True
+    return SequenceMatcher(None, " ".join(sorted(wa)), " ".join(sorted(wb))).ratio() >= 0.6
 
 
 def _bullets(names):

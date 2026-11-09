@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% macro level(v) %}{{ 'empty' if v is none else 'ok' if v >= 90 else 'rev' if v >= 70 else 'nok' }}{% endmacro %}
+
+{% block content %}
+{% set pct = (100 * ai_kept / ai_total)|round|int if ai_total else None %}
+<section class="intro">
+  <h1>Score de l’agent IA</h1>
+  <p class="muted">Chaque choix que tu as modifié a été envoyé à l’agent IA avec le nom de base : il juge si les deux
+    désignent le même fournisseur. Rien n’est encore enregistré.</p>
+</section>
+
+{% if judge_error %}
+<div class="alert" role="alert"><strong>Vérification interrompue :</strong> {{ judge_error }}
+  Les lignes non vérifiées restent sans score ; tu peux quand même enregistrer.</div>
+{% endif %}
+
+<div class="stats">
+  <div class="stat {{ level(mod) }}">
+    <span class="stat-num">{{ '—' if mod is none else mod ~ ' %' }}</span>
+    <span class="stat-label">Score de tes modifications</span>
+    <span class="stat-hint">{% if mod is none %}aucune modification à vérifier{% else %}moyenne sur {{ n_checked }} choix vérifié{{ 's' if n_checked > 1 }} par l’agent IA{% endif %}</span>
+  </div>
+  <div class="stat {{ level(pct) }}">
+    <span class="stat-num">{{ '—' if pct is none else pct ~ ' %' }}</span>
+    <span class="stat-label">Précision de l’agent IA</span>
+    <span class="stat-hint">{% if pct is none %}aucune proposition de l’agent ce traitement{% else %}{{ ai_kept }} / {{ ai_total }} propositions gardées{% endif %}</span>
+  </div>
+  <div class="stat accent">
+    <span class="stat-num">{{ changes|length }}</span>
+    <span class="stat-label">Choix modifiés</span>
+    <span class="stat-hint">propositions de l’agent et noms déjà enregistrés</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Tes modifications vérifiées par l’agent IA</h2>
+  {% if changes %}
+  <p class="muted">Score de 0 à 100 : 100 = même fournisseur certain, 0 = fournisseurs différents.</p>
+  <table class="changes">
+    <thead>
+      <tr><th>Nom de base</th><th>Avant</th><th>Ton choix</th><th class="num">Score IA</th></tr>
+    </thead>
+    <tbody>
+      {% for c in changes %}
+      <tr>
+        <td class="name">{{ c.name }}<span class="sub muted">{{ c.kind }}</span></td>
+        <td><s class="muted">{{ c.before or '— aucun —' }}</s>
+          <span class="sub"><span class="badge {{ '' if c.origin == 'Agent IA' else 'saved' }}">{{ c.origin }}</span></span></td>
+        <td><strong>{{ c.after or '— aucun —' }}</strong></td>
+        <td class="num">
+          {% if c.ia_score is defined and c.ia_score is not none %}
+          <span class="badge {{ level(c.ia_score) }}">{{ c.ia_score }}</span>
+          {% else %}<span class="muted">—</span>{% endif %}
+          {% if c.ia_raison %}<span class="sub muted reason">{{ c.ia_raison }}</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Aucune modification : tous les choix sont restés tels quels.</p>
+  {% endif %}
+</div>
+
+<form method="post" action="{{ url_for('save', job=job) }}" data-busy="Calcul en cours…">
+  <div class="actionbar">
+    <span class="muted">Le mapping est enregistré puis le fichier Excel est calculé.</span>
+    <div class="actions">
+      <a class="btn" href="{{ url_for('review', job=job) }}">← Modifier le mapping</a>
+      <button class="btn primary" type="submit">Enregistrer et calculer →</button>
+    </div>
+  </div>
+</form>
+{% endblock %}

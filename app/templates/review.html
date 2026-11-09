@@ -31,7 +31,7 @@
   </div>
 </div>
 
-<form method="post" action="{{ url_for('save', job=job) }}" data-busy="Calcul en cours…">
+<form method="post" action="{{ url_for('score', job=job) }}" data-busy="Calcul du score…">
   <div class="card">
     <h2>Fournisseurs QBs → fournisseurs SAP</h2>
     <p class="muted">Choisis le fournisseur SAP qui correspond à chaque nom QBs.</p>
@@ -51,12 +51,12 @@
         <tr class="{{ 'none' if not r.sap }}" data-saved="{{ 1 if r.source == 'enregistré' else 0 }}">
           <td class="name">{{ r.qbs }}<input type="hidden" name="q{{ loop.index0 }}" value="{{ r.qbs }}"></td>
           <td>
-            <select name="m{{ loop.index0 }}" aria-label="Fournisseur SAP pour {{ r.qbs }}">
+            <select name="m{{ loop.index0 }}" {% if r.is_ai %}data-ai="{{ r.ai or '' }}"{% else %}data-orig="{{ r.orig or '' }}"{% endif %} aria-label="Fournisseur SAP pour {{ r.qbs }}">
               <option value="">— aucun (nouveau fournisseur) —</option>
               {% for s in sap_names %}<option value="{{ s }}" {{ 'selected' if s == r.sap }}>{{ s }}</option>{% endfor %}
             </select>
           </td>
-          <td class="hide-sm"><span class="badge {{ 'saved' if r.source == 'enregistré' }}">{{ 'Agent IA' if r.source == 'LLM' else r.source }}</span></td>
+          <td class="hide-sm">{% if r.is_ai %}{% set edited = (r.sap or None) != (r.ai or None) %}<span class="badge ai-badge {{ 'edited' if edited }}">{{ 'Modifié' if edited else 'Agent IA' }}</span>{% else %}{% set edited = (r.sap or None) != (r.orig or None) %}<span class="badge saved-badge {{ 'edited' if edited else 'saved' }}">{{ 'Modifié' if edited else r.source }}</span>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -79,12 +79,12 @@
         <tr data-saved="{{ 1 if a.source == 'enregistré' else 0 }}">
           <td class="name">{{ a.name }}<input type="hidden" name="n{{ loop.index0 }}" value="{{ a.name }}"></td>
           <td>
-            <select name="a{{ loop.index0 }}" aria-label="Fiche principale pour {{ a.name }}">
+            <select name="a{{ loop.index0 }}" {% if a.is_ai %}data-ai="{{ a.ai or '' }}"{% else %}data-orig="{{ a.orig or '' }}"{% endif %} aria-label="Fiche principale pour {{ a.name }}">
               <option value="">— non, fournisseur distinct —</option>
               {% for s in sap_names if s != a.name %}<option value="{{ s }}" {{ 'selected' if s == a.sap }}>{{ s }}</option>{% endfor %}
             </select>
           </td>
-          <td class="hide-sm"><span class="badge {{ 'saved' if a.source == 'enregistré' }}">{{ 'Agent IA' if a.source == 'LLM' else a.source }}</span></td>
+          <td class="hide-sm">{% if a.is_ai %}{% set edited = (a.sap or None) != (a.ai or None) %}<span class="badge ai-badge {{ 'edited' if edited }}">{{ 'Modifié' if edited else 'Agent IA' }}</span>{% else %}{% set edited = (a.sap or None) != (a.orig or None) %}<span class="badge saved-badge {{ 'edited' if edited else 'saved' }}">{{ 'Modifié' if edited else a.source }}</span>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -93,10 +93,10 @@
   {% endif %}
 
   <div class="actionbar">
-    <span class="muted">Le mapping est enregistré puis le fichier Excel est calculé.</span>
+    <span class="muted">Quand tu as fini tes modifications : l’étape suivante calcule le score de l’agent IA.</span>
     <div class="actions">
       <a class="btn" href="{{ url_for('index') }}">Annuler</a>
-      <button class="btn primary" type="submit">Enregistrer et calculer →</button>
+      <button class="btn primary" type="submit">Suivant : score de l’agent IA →</button>
     </div>
   </div>
 </form>

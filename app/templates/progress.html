@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="card progress-card" data-progress-url="{{ url_for('progress', job=job) }}">
+<section class="card progress-card" data-progress-url="{{ progress_url or url_for('progress', job=job) }}">
   <div class="spinner" aria-hidden="true"></div>
-  <h1>Mapping des noms en cours…</h1>
-  <div class="bar" role="progressbar" aria-label="Avancement du mapping"><div id="bar"></div></div>
-  <p id="txt" class="muted" aria-live="polite">Démarrage (le premier chargement du modèle peut prendre ~1 min)…</p>
+  <h1>{{ title or 'Mapping des noms en cours…' }}</h1>
+  <div class="bar" role="progressbar" aria-label="Avancement"><div id="bar"></div></div>
+  <p id="txt" class="muted" aria-live="polite">{{ hint ~ ' ' if hint }}Démarrage (le premier chargement du modèle peut prendre ~1 min)…</p>
 </section>
 {% endblock %}

@@ -4,7 +4,9 @@
 <section class="intro">
   <h1>Calcul terminé</h1>
   <p class="muted">{{ n_sap }} lignes SAP + {{ n_qbs }} lignes QBs traitées. Le mapping validé est enregistré
-    et sera repris au prochain traitement.</p>
+    et sera repris au prochain traitement.{% if ai_total %} Précision de l’agent IA :
+    <strong>{{ (100 * ai_kept / ai_total)|round|int }} %</strong> ({{ ai_kept }} / {{ ai_total }}).{% endif %}
+    {% if mod is not none %} Score de tes modifications (vérifié par l’agent IA) : <strong>{{ mod }} %</strong>.{% endif %}</p>
 </section>
 
 <div class="stats">
