@@ -33,15 +33,17 @@ La colonne `deuxieme_name` donne un nom commun : le nom SAP de référence.
 
 ### 2. Calcul du Status
 
-Une ligne est comparée sur la clé **`deuxieme_name` + `Journal Entry Date` + `Amount (CoCode Crcy)`**
-(montant signé, au centime près). Les règles s'appliquent dans l'ordre, chacune ne remplit que les
+Une ligne est comparée sur la clé **`deuxieme_name` + `Journal Entry Date` + `Amount (CoCode Crcy)`**.
+Le montant SAP et le montant QBs doivent être de même signe, avec un **écart de 3 au plus**
+(`TOLERANCE` dans `script/merge_files.py`) : QBs (360 000,25) = SAP (360 000,00). Quand plusieurs lignes
+sont possibles, l'écart le plus petit est apparié d'abord (montant exact en priorité). Les règles s'appliquent dans l'ordre, chacune ne remplit que les
 statuts encore vides :
 
 | # | Lignes | Règle | Status |
 |---|--------|-------|--------|
 | 1 | SAP + QBs | Appariement 1 pour 1 : une ligne SAP et une ligne QBs avec la même clé | `OK` |
 | 2 | SAP | Lignes vides groupées par `Supplier` : la somme des montants = 0 | `Reversed` |
-| 3 | QBs | Aucune ligne SAP avec la même clé | `NOK` |
+| 3 | QBs | Aucune ligne SAP avec la même clé (même nom, même date, montant à 3 près) | `NOK` |
 | 4 | SAP | Par `Supplier`, triées par date : deux lignes de montants opposés (x / -x) sont annulées, on recommence jusqu'à ce qu'il n'y ait plus de paire | `Reversed`, le reste `NOK` |
 | 5 | SAP + QBs | `Amount (CoCode Crcy)` = 0 (remplace le statut précédent) | `0` |
 

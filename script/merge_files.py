@@ -42,6 +42,10 @@ SYSTEM_NAMES = {"sap": "SAP"}
 NUM_FMT = '_(* #,##0.00_);_(* \\(#,##0.00\\);_(* "-"??_);_(@_)'
 DATE_FMT = "dd/mm/yyyy"
 
+# Écart de montant accepté entre une ligne SAP et une ligne QBs pour les apparier
+# (ex. QBs 360 000,25 = SAP 360 000,00). Même signe obligatoire.
+TOLERANCE = 3
+
 
 def col(name: str) -> str:
     """Lettre Excel d'une colonne de COLUMNS."""
@@ -200,24 +204,26 @@ def clean(value):
     return None if pd.isna(value) else value
 
 
-def compute_status(rows: pd.DataFrame, sap_system: str) -> list:
+def compute_status(rows: pd.DataFrame, sap_system: str, tolerance: float = TOLERANCE) -> list:
     """Appariement 1 pour 1 : une ligne SAP + une ligne QBs avec le même
-    deuxieme_name, la même Journal Entry Date et le même Amount (CoCode Crcy)
-    (signe compris, au centime près) -> "OK" sur les deux lignes.
+    deuxieme_name, la même Journal Entry Date et un Amount (CoCode Crcy) de même
+    signe avec un écart <= tolerance (3 par défaut) -> "OK" sur les deux lignes.
+    Les écarts les plus petits sont appariés d'abord (montant exact en priorité).
     Chaque ligne ne sert qu'une fois, donc nb OK SAP = nb OK QBs.
     Ensuite, lignes SAP encore vides groupées par Supplier : somme = 0 -> "Reversed".
-    Puis, lignes QBs encore vides sans aucune ligne SAP de même clé -> "NOK".
+    Puis, lignes QBs encore vides sans aucune ligne SAP proche (même nom, même date,
+    écart <= tolerance) -> "NOK".
     Puis, lignes SAP encore vides, par Supplier et date croissante : deux lignes
     consécutives x / -x -> "Reversed" (répété jusqu'à épuisement), le reste -> "NOK".
     Enfin, toute ligne avec Amount (CoCode Crcy) = 0 -> 0.
 
-    Si plusieurs lignes SAP sont candidates, on prend d'abord celle non soldée.
+    Si plusieurs lignes SAP sont candidates au même écart, on prend d'abord celle non soldée.
     """
     amount = rows["Amount (CoCode Crcy)"]
+    amt2 = amount.round(2)
     keys = list(zip(
         rows["deuxieme_name"],
         pd.to_datetime(rows["Journal Entry Date"]).dt.normalize(),
-        amount.round(2),
     ))
     cleared = rows["_cleared"].fillna(False).astype(bool) if "_cleared" in rows else pd.Series(False, index=rows.index)
 
@@ -225,15 +231,22 @@ def compute_status(rows: pd.DataFrame, sap_system: str) -> list:
     for i, (k, sys_) in enumerate(zip(keys, rows["System"])):
         (sap_by_key if sys_ == sap_system else other_by_key).setdefault(k, []).append(i)
 
+    def close(i, j):
+        """Même signe et écart <= tolerance (au centime près)."""
+        a, b = amt2.iat[i], amt2.iat[j]
+        return (pd.notna(a) and pd.notna(b) and (a > 0) == (b > 0) and (a < 0) == (b < 0)
+                and round(abs(a - b), 2) <= tolerance)
+
     status = [None] * len(rows)
     for k, other_idx in other_by_key.items():
-        free = list(sap_by_key.get(k, []))
-        for j in other_idx:
-            if not free:
-                break
-            best = min(free, key=lambda i: (bool(cleared.iat[i]), i))
-            free.remove(best)
-            status[best] = status[j] = "OK"
+        pairs = sorted(
+            (round(abs(amt2.iat[i] - amt2.iat[j]), 2), bool(cleared.iat[i]), j, i)
+            for j in other_idx for i in sap_by_key.get(k, []) if close(i, j))
+        used = set()
+        for _, _, j, i in pairs:
+            if i not in used and j not in used:
+                used.update((i, j))
+                status[i] = status[j] = "OK"
 
     # Lignes SAP restées vides : groupées par Supplier,
     # si la somme de Amount (CoCode Crcy) = 0 -> "Reversed"
@@ -246,13 +259,11 @@ def compute_status(rows: pd.DataFrame, sap_system: str) -> list:
             for i in idx:
                 status[i] = "Reversed"
 
-    # Lignes QBs restées vides : aucune ligne SAP avec le même
-    # deuxieme_name + Journal Entry Date + Amount (CoCode Crcy) -> "NOK"
+    # Lignes QBs restées vides : aucune ligne SAP avec le même deuxieme_name,
+    # la même Journal Entry Date et un montant à <= tolerance près -> "NOK"
     for k, other_idx in other_by_key.items():
-        if k in sap_by_key:
-            continue
         for j in other_idx:
-            if status[j] is None:
+            if status[j] is None and not any(close(i, j) for i in sap_by_key.get(k, [])):
                 status[j] = "NOK"
 
     # Lignes SAP encore vides : par Supplier, triées par date croissante.
