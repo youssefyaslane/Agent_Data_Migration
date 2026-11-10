@@ -39,7 +39,7 @@ if (uploadForm) {
   const box = $("period"), body = $("periodBody"), info = $("periodInfo");
   const from = $("dateFrom"), to = $("dateTo");
   const fromTxt = $("dateFromTxt"), toTxt = $("dateToTxt");
-  const months = $("periodMonths"), count = $("periodCount"), err = $("dateError");
+  const count = $("periodCount"), err = $("dateError");
   const hFrom = $("hFrom"), hTo = $("hTo"), range = $("range");
   const summary = $("submitSummary");
   const MONTHS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
@@ -133,8 +133,6 @@ if (uploadForm) {
     summary.classList.toggle("warn", !!(bad || empty));
     summary.innerHTML = bad || empty ? count.textContent
       : `Sera traité : <strong>${ns} lignes SAP</strong> + <strong>${nq} lignes QBs</strong>, du ${fr(a)} au ${fr(b)}.`;
-    months.querySelectorAll("button").forEach((btn) =>
-      btn.classList.toggle("active", btn.dataset.from === from.value && btn.dataset.to === to.value));
     $("periodAll").hidden = from.value === data.min && to.value === data.max;
   };
 
@@ -286,18 +284,6 @@ if (uploadForm) {
         (noDate ? ` · ${plural(noDate, "ligne sans date exclue", "lignes sans date exclues")} si tu limites la période` : "") + ".";
       showMeta("sap", d.sap);
       showMeta("qbs", d.qbs);
-      months.innerHTML = "";
-      d.months.forEach((m) => {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "chip-btn";
-        const [y, mo] = m.from.split("-");
-        b.textContent = `${MONTHS[+mo - 1]} ${y}`;
-        b.dataset.from = m.from < d.min ? d.min : m.from;
-        b.dataset.to = m.to > d.max ? d.max : m.to;
-        b.addEventListener("click", () => setRange(b.dataset.from, b.dataset.to));
-        months.appendChild(b);
-      });
       body.hidden = false;
       drawRange();
       setRange(d.min, d.max);

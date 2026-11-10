@@ -106,8 +106,8 @@ conservés quand le conteneur est reconstruit.
 Puis ouvrir http://127.0.0.1:8080 :
 
 1. Charger le fichier SAP et le fichier QBs. Dès que les deux sont déposés, l'app lit la colonne
-   `Journal Entry Date` et propose une **période** : champs Du / Au (pré-remplis avec toute la période
-   trouvée), raccourcis par mois et nombre de lignes SAP / QBs comprises, mis à jour en direct.
+   `Journal Entry Date` et propose une **période** : frise par jour avec poignées, champs Du / Au
+   (pré-remplis avec toute la période trouvée) et nombre de lignes SAP / QBs comprises, mis à jour en direct.
    Le mapping, les Status et l'Excel ne portent que sur cette période (rappelée en haut des étapes
    suivantes et dans le nom du fichier téléchargé).
 2. Attendre la fin du mapping (seuls les nouveaux noms sont envoyés au LLM).

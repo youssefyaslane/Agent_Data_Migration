@@ -453,30 +453,6 @@ main {
   pointer-events: none;
 }
 .period-arrow { padding-bottom: 9px; color: var(--muted); }
-.period-months { display: flex; flex-direction: column; gap: 4px; }
-.period-months-label { font-size: .8rem; font-weight: 600; color: var(--muted); }
-.segmented {
-  display: inline-flex;
-  flex-wrap: wrap;
-  padding: 3px;
-  gap: 2px;
-  border: 1px solid var(--line-strong);
-  border-radius: 9px;
-  background: var(--surface);
-}
-.chip-btn {
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  border-radius: 6px;
-  padding: 6px 12px;
-  font: inherit;
-  font-size: .88rem;
-  cursor: pointer;
-  transition: background .15s, color .15s;
-}
-.chip-btn:hover { background: var(--accent-soft); color: var(--accent); }
-.chip-btn.active { background: var(--accent); color: #fff; font-weight: 600; }
 .date-error { margin-top: 8px; color: var(--nok); font-size: .88rem; font-weight: 600; }
 
 .period-summary {
