@@ -58,10 +58,21 @@ statuts encore vides :
 
 ## Fichiers d'entrée
 
-| Fichier | Colonnes utilisées |
-|---------|--------------------|
+| Fichier | Colonnes obligatoires |
+|---------|-----------------------|
 | SAP (`.xlsx`) | `Supplier`, `Supplier Name`, `Journal Entry Date`, `Journal Entry`, `Amount (CoCode Crcy)`, `Clearing Status` |
 | QBs (`.xlsx`) | `Name`, `Date`, `Memo`, `Debit`, `Credit` (montant = Debit − Credit) |
+
+**Contrôle des fichiers.** Chaque fichier est vérifié avant tout traitement (`check_file` dans
+`script/merge_files.py`, à chaque dépôt dans l'app et en ligne de commande). Il est refusé, avec un
+message clair, si :
+- ce n'est pas un vrai classeur Excel `.xlsx` (autre extension, fichier abîmé ou CSV renommé) ;
+- une colonne obligatoire manque (les espaces autour des en-têtes sont ignorés) ;
+- les fichiers SAP et QBs sont inversés ;
+- il ne contient aucune ligne ;
+- un montant (`Amount (CoCode Crcy)`, `Debit`, `Credit`) n'est pas un nombre (n° de ligne Excel indiqué).
+
+Dans l'app, le bouton « Lancer le mapping » reste désactivé tant que les deux fichiers ne sont pas valides.
 
 **Dates SAP et QBs (français / anglais).** Les deux fichiers passent par la même lecture des dates :
 vraies dates Excel, numéros de série Excel, `AAAA-MM-JJ`, ou texte `JJ/MM/AAAA` (français) /
@@ -105,7 +116,8 @@ conservés quand le conteneur est reconstruit.
 
 Puis ouvrir http://127.0.0.1:8080 :
 
-1. Charger le fichier SAP et le fichier QBs. Dès que les deux sont déposés, l'app lit la colonne
+1. Charger le fichier SAP et le fichier QBs. Chaque fichier est contrôlé dès son dépôt (format `.xlsx`
+   et colonnes obligatoires, voir *Contrôle des fichiers*). Dès que les deux sont valides, l'app lit la colonne
    `Journal Entry Date` et propose une **période** : frise par jour avec poignées, champs Du / Au
    (pré-remplis avec toute la période trouvée) et nombre de lignes SAP / QBs comprises, mis à jour en direct.
    Le mapping, les Status et l'Excel ne portent que sur cette période (rappelée en haut des étapes

@@ -63,8 +63,62 @@ def system_name(path: Path) -> str:
     return SYSTEM_NAMES.get(path.stem.lower(), path.stem)
 
 
+# Structure attendue de chaque export : sans ces colonnes, le fichier est refusé
+REQUIRED_COLUMNS = {
+    "SAP": ["Supplier", "Supplier Name", "Journal Entry Date", "Journal Entry",
+            "Amount (CoCode Crcy)", "Clearing Status"],
+    "QBs": ["Name", "Date", "Memo", "Debit", "Credit"],
+}
+AMOUNT_COLUMNS = {"SAP": ["Amount (CoCode Crcy)"], "QBs": ["Debit", "Credit"]}
+FILE_LABELS = {"SAP": "SAP", "QBs": "QuickBooks"}
+
+
+class FileCheckError(ValueError):
+    """Fichier refusé : format ou structure non conforme."""
+
+
+def check_file(path: Path, kind: str, **read_kw) -> pd.DataFrame:
+    """Lit l'export et vérifie, avant tout calcul :
+    - le format : un vrai classeur Excel .xlsx lisible ;
+    - la structure : les colonnes obligatoires (REQUIRED_COLUMNS), au moins une ligne,
+      des montants numériques.
+    Lève FileCheckError avec un message clair sinon. Renvoie le tableau lu."""
+    label = FILE_LABELS[kind]
+    if Path(path).suffix.lower() != ".xlsx":
+        raise FileCheckError(f"le fichier {label} doit être au format .xlsx.")
+    try:
+        df = pd.read_excel(path, **read_kw)
+    except Exception:
+        raise FileCheckError(f"le fichier {label} n’est pas un vrai fichier Excel .xlsx "
+                             "(fichier abîmé, ou autre format renommé en .xlsx).") from None
+    df.columns = [str(c).strip() for c in df.columns]
+
+    missing = [c for c in REQUIRED_COLUMNS[kind] if c not in df.columns]
+    if missing:
+        other = next(k for k in REQUIRED_COLUMNS if k != kind)
+        if all(c in df.columns for c in REQUIRED_COLUMNS[other]):
+            raise FileCheckError(f"ce fichier est un export {FILE_LABELS[other]}, pas {label} : "
+                                 "les deux fichiers sont inversés.")
+        s = "s" if len(missing) > 1 else ""
+        raise FileCheckError(f"colonne{s} manquante{s} dans le fichier {label} : {', '.join(missing)}. "
+                             f"Colonnes obligatoires : {', '.join(REQUIRED_COLUMNS[kind])}.")
+
+    df = df.dropna(how="all")
+    if df.empty:
+        raise FileCheckError(f"le fichier {label} ne contient aucune ligne.")
+    for c in AMOUNT_COLUMNS[kind]:
+        bad = df[c].notna() & pd.to_numeric(df[c], errors="coerce").isna()
+        if bad.any():
+            rows = ", ".join(str(i + 2) for i in df.index[bad][:3])   # n° de ligne Excel (en-tête = 1)
+            n = int(bad.sum())
+            raise FileCheckError(f"colonne {c} du fichier {label} : {n} montant{'s' if n > 1 else ''} "
+                                 f"non numérique{'s' if n > 1 else ''} (ligne{'s' if n > 1 else ''} "
+                                 f"{rows}{'…' if n > 3 else ''}).")
+    return df
+
+
 def load_sap(path: Path) -> pd.DataFrame:
-    df = pd.read_excel(path, dtype={"Journal Entry": str, "Supplier": str})
+    df = check_file(path, "SAP", dtype={"Journal Entry": str, "Supplier": str})
     dates = parse_dates(df["Journal Entry Date"], prefer="mdy")
     out = pd.DataFrame({
         "Supplier": df["Supplier"],
@@ -170,7 +224,7 @@ def describe_dates(info: dict) -> str:
 
 
 def load_qbs(path: Path) -> pd.DataFrame:
-    df = pd.read_excel(path)
+    df = check_file(path, "QBs")
     debit = pd.to_numeric(df["Debit"], errors="coerce").fillna(0)
     credit = pd.to_numeric(df["Credit"], errors="coerce").fillna(0)
     dates = parse_dates(df["Date"], prefer="mdy")   # QuickBooks : anglais si ambigu

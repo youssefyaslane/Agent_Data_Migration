@@ -212,7 +212,9 @@ main {
   transition: border-color .15s, background .15s;
 }
 .dropzone:hover, .dropzone.drag { border-color: var(--accent); background: var(--accent-soft); }
-.dropzone.has-file { border-style: solid; border-color: var(--ok); background: var(--surface); }
+.dropzone.has-file { border-style: solid; background: var(--surface); }
+.dropzone.valid { border-color: var(--ok); }
+.dropzone.bad { border-color: var(--nok); background: var(--nok-soft); }
 .dz-top { display: flex; align-items: center; justify-content: space-between; }
 .dz-check {
   display: none;
@@ -225,8 +227,15 @@ main {
   font-size: .8rem;
   font-weight: 700;
 }
-.has-file .dz-check { display: grid; }
-.has-file .dz-hint { display: none; }
+.dz-cross { display: none; }
+.valid .dz-check { display: grid; }
+.bad .dz-cross { display: grid; background: var(--nok); }
+.dz-cross { place-items: center; width: 24px; height: 24px; border-radius: 50%; color: #fff; font-size: .8rem; font-weight: 700; }
+.valid .dz-hint { display: none; }
+.dz-error { font-size: .86rem; font-weight: 600; color: var(--nok); }
+.dz-error[hidden] { display: none; }
+.checking .dz-file::after { content: " · vérification du format et des colonnes…"; color: var(--muted); font-weight: 400; }
+.btn.primary:disabled { opacity: .5; cursor: not-allowed; }
 .dz-meta {
   display: grid;
   gap: 3px;
@@ -257,7 +266,9 @@ main {
 .dz-tag.qbs { background: var(--qbs); }
 .dz-title { font-weight: 600; font-size: 1.02rem; }
 .dz-file { font-size: .92rem; color: var(--accent); word-break: break-all; }
-.has-file .dz-file { color: var(--ok); font-weight: 600; }
+.has-file .dz-file { font-weight: 600; }
+.valid .dz-file { color: var(--ok); }
+.bad .dz-file { color: var(--nok); }
 .dz-hint { font-size: .8rem; color: var(--muted); }
 
 /* Période (upload) */

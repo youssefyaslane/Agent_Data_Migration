@@ -19,6 +19,7 @@ document.querySelectorAll(".dropzone").forEach((zone) => {
     const f = input.files[0];
     label.textContent = f ? f.name : label.dataset.empty;
     zone.classList.toggle("has-file", !!f);
+    zone.classList.remove("valid", "bad");   // nouveau fichier : contrôle à refaire
   };
   input.addEventListener("change", show);
   ["dragenter", "dragover"].forEach((e) => input.addEventListener(e, () => zone.classList.add("drag")));
@@ -41,7 +42,7 @@ if (uploadForm) {
   const fromTxt = $("dateFromTxt"), toTxt = $("dateToTxt");
   const count = $("periodCount"), err = $("dateError");
   const hFrom = $("hFrom"), hTo = $("hTo"), range = $("range");
-  const summary = $("submitSummary");
+  const summary = $("submitSummary"), submitBtn = $("submitBtn");
   const MONTHS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
   const DAY = 864e5;
   let data = null;
@@ -232,7 +233,11 @@ if (uploadForm) {
 
   // ---- pas d'envoi avec une date invalide ou une période à l'envers
   uploadForm.addEventListener("submit", (e) => {
-    if (box.hidden || !data) return;
+    if (!data) {                 // fichiers pas encore validés (format + colonnes)
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      return;
+    }
     const ok = checkTxt(fromTxt, from, true) & checkTxt(toTxt, to, true);
     const reversed = from.value && to.value && from.value > to.value;
     if (!ok || reversed) {
@@ -257,41 +262,62 @@ if (uploadForm) {
     meta.hidden = false;
   };
 
+  // ---- contrôle de chaque fichier dès son dépôt : format .xlsx + colonnes obligatoires.
+  // Le bouton d'envoi reste désactivé tant que les deux fichiers ne sont pas valides.
+  const LABELS = { sap: "SAP", qbs: "QuickBooks" };
+  const setZone = (key, state, msg) => {
+    const zone = $(key).closest(".dropzone");
+    ["valid", "bad", "checking"].forEach((c) => zone.classList.remove(c));
+    if (state) zone.classList.add(state);
+    const e = $("err-" + key);
+    e.textContent = msg ? `Fichier refusé : ${msg}` : "";
+    e.hidden = state !== "bad";
+  };
+  const waiting = (msg, warn) => {
+    data = null;
+    box.hidden = true;
+    submitBtn.disabled = true;
+    summary.classList.toggle("warn", !!warn);
+    summary.textContent = msg;
+  };
+
   const inspect = async () => {
-    if (!sapIn.files[0] || !qbsIn.files[0]) {
-      box.hidden = true; data = null;
-      showMeta("sap"); showMeta("qbs");
-      summary.classList.remove("warn");
-      summary.textContent = "Dépose les deux fichiers pour choisir la période.";
-      return;
-    }
+    const files = { sap: sapIn.files[0], qbs: qbsIn.files[0] };
     const mine = ++seq;
-    box.hidden = false;
-    body.hidden = true;
-    info.textContent = "Lecture des dates des deux fichiers…";
-    summary.textContent = "Lecture des dates…";
+    Object.keys(files).forEach((k) => { showMeta(k); setZone(k, files[k] ? "checking" : null); });
+    if (!files.sap && !files.qbs) return waiting("Dépose les deux fichiers pour choisir la période.");
+    waiting("Vérification du format et des colonnes…");
     const fd = new FormData();
-    fd.append("sap", sapIn.files[0]);
-    fd.append("qbs", qbsIn.files[0]);
+    Object.entries(files).forEach(([k, f]) => f && fd.append(k, f));
     try {
       const r = await fetch(uploadForm.dataset.inspectUrl, { method: "POST", body: fd });
       const d = await r.json();
       if (mine !== seq) return;            // un autre fichier a été choisi entre-temps
       if (!r.ok) throw new Error(d.error || r.statusText);
+      const bad = [];
+      Object.keys(files).forEach((k) => {
+        const f = d[k];
+        if (!f) return;
+        if (f.ok) { setZone(k, "valid"); showMeta(k, f); } else { setZone(k, "bad", f.error); bad.push(LABELS[k]); }
+      });
+      if (bad.length) return waiting(`Fichier ${bad.join(" et ")} refusé : corrige-le puis dépose-le à nouveau.`, true);
+      if (!d.ready) {
+        return d.error ? waiting(`Impossible de choisir la période : ${d.error}`, true)
+          : waiting(`Fichier ${LABELS[files.sap ? "sap" : "qbs"]} valide. Dépose le fichier ${LABELS[files.sap ? "qbs" : "sap"]}.`);
+      }
       data = d;
       const noDate = d.sap.no_date + d.qbs.no_date;
       info.textContent = `Dates trouvées du ${d.min_fr} au ${d.max_fr}` +
         (noDate ? ` · ${plural(noDate, "ligne sans date exclue", "lignes sans date exclues")} si tu limites la période` : "") + ".";
-      showMeta("sap", d.sap);
-      showMeta("qbs", d.qbs);
+      box.hidden = false;
       body.hidden = false;
+      submitBtn.disabled = false;
       drawRange();
       setRange(d.min, d.max);
     } catch (e) {
       if (mine !== seq) return;
-      data = null;
-      info.textContent = `Impossible de lire les dates : ${e.message}`;
-      summary.textContent = "";
+      Object.keys(files).forEach((k) => files[k] && setZone(k, null));
+      waiting(`Impossible de vérifier les fichiers : ${e.message}`, true);
     }
   };
 

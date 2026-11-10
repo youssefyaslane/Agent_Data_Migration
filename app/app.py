@@ -134,31 +134,45 @@ def load_job(job: str):
             filter_period(load_qbs(d / "QBs.xlsx"), start, end))
 
 
+UPLOADS = (("sap", "sap.xlsx", load_sap), ("qbs", "QBs.xlsx", load_qbs))
+
+
 @app.route("/inspect", methods=["POST"])
 def inspect():
-    """Dates trouvées dans les deux fichiers déposés (pour choisir la période)."""
-    try:
-        sap_file, qbs_file = check_upload("sap"), check_upload("qbs")
-        with tempfile.TemporaryDirectory() as tmp:
-            sap_file.save(Path(tmp) / "sap.xlsx")
-            qbs_file.save(Path(tmp) / "QBs.xlsx")
-            sap, qbs = load_sap(Path(tmp) / "sap.xlsx"), load_qbs(Path(tmp) / "QBs.xlsx")
-    except KeyError as e:
-        return jsonify(error=f"colonne introuvable : {e}. Vérifie que SAP et QBs sont dans le bon champ."), 400
-    except Exception as e:
-        return jsonify(error=f"{type(e).__name__} : {e}"), 400
+    """Contrôle de chaque fichier déposé (format .xlsx + colonnes obligatoires), dès son
+    dépôt, puis dates trouvées dans les deux fichiers (pour choisir la période).
+    Réponse : {sap: {ok, error | infos}, qbs: {...}, ready, min, max, months…}."""
+    out, loaded = {}, {}
+    with tempfile.TemporaryDirectory() as tmp:
+        for key, name, loader in UPLOADS:
+            f = request.files.get(key)
+            if not f or not f.filename:
+                continue
+            try:
+                if not f.filename.lower().endswith(".xlsx"):
+                    raise ValueError(f"format refusé : « {f.filename} » n’est pas un fichier .xlsx.")
+                f.save(Path(tmp) / name)
+                loaded[key] = loader(Path(tmp) / name)
+            except ValueError as e:
+                out[key] = {"ok": False, "error": str(e)}
+            except Exception as e:
+                out[key] = {"ok": False, "error": f"lecture impossible ({type(e).__name__} : {e})."}
 
-    out, all_dates = {}, []
-    for key, df in (("sap", sap), ("qbs", qbs)):
+    all_dates = []
+    for key, df in loaded.items():
         d = pd.to_datetime(df["Journal Entry Date"]).dropna().dt.normalize()
         all_dates.append(d)
         info = df.attrs.get("dates", {})
-        out[key] = {"n": len(df), "no_date": int(len(df) - len(d)),
+        out[key] = {"ok": True, "n": len(df), "no_date": int(len(df) - len(d)),
                     "dates": d.dt.strftime("%Y-%m-%d").tolist(),
                     "desc": describe_dates(info), "problems": info.get("invalid", 0)}
+    out["ready"] = len(loaded) == 2
+    if not out["ready"]:
+        return jsonify(out)
     every = pd.concat(all_dates)
     if every.empty:
-        return jsonify(error="aucune date trouvée dans la colonne Journal Entry Date / Date."), 400
+        out.update(ready=False, error="aucune date trouvée dans la colonne Journal Entry Date / Date.")
+        return jsonify(out)
     months = sorted(every.dt.to_period("M").unique())
     out.update(
         min=every.min().strftime("%Y-%m-%d"), max=every.max().strftime("%Y-%m-%d"),
@@ -219,10 +233,13 @@ def index():
     JOBS[job] = {"state": "running", "done": 0, "total": 0, "current": "",
                  "period": (start, end), "period_label": period_label(start, end)}
     try:
-        sap, qbs = load_job(job)
-    except Exception:
-        sap = qbs = None   # erreur de colonnes : affichée par le traitement
-    if sap is not None and sap.empty and qbs.empty:
+        sap, qbs = load_job(job)   # contrôle du format et des colonnes des deux fichiers
+    except Exception as e:
+        del JOBS[job]
+        shutil.rmtree(d, ignore_errors=True)
+        msg = str(e) if isinstance(e, ValueError) else f"lecture impossible ({type(e).__name__} : {e})."
+        return render_template("upload.html", step=1, error=f"fichier refusé : {msg}"), 400
+    if sap.empty and qbs.empty:
         del JOBS[job]
         shutil.rmtree(d, ignore_errors=True)
         return render_template("upload.html", step=1,

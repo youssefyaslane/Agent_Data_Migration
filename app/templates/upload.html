@@ -7,7 +7,8 @@
   <path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>{% endset %}
 <section class="intro">
   <h1>Charger les exports</h1>
-  <p class="muted">Dépose l'export SAP et l'export QuickBooks, puis choisis la période à traiter.
+  <p class="muted">Dépose l'export SAP et l'export QuickBooks (.xlsx) : leur format et leurs colonnes sont vérifiés
+    dès le dépôt, puis tu choisis la période à traiter.
     Les fournisseurs déjà validés sont repris directement, seuls les nouveaux noms sont envoyés à l’agent IA.</p>
 </section>
 
@@ -21,10 +22,12 @@
       <span class="dz-top">
         <span class="dz-tag {{ key }}">{{ tag }}</span>
         <span class="dz-check" aria-hidden="true">✓</span>
+        <span class="dz-cross" aria-hidden="true">✕</span>
       </span>
       <span class="dz-title">{{ title }}</span>
       <span class="dz-file" data-empty="Clique ou glisse un fichier .xlsx">Clique ou glisse un fichier .xlsx</span>
-      <span class="dz-hint">{{ cols }}</span>
+      <span class="dz-hint"><strong>Format :</strong> .xlsx · <strong>Colonnes obligatoires :</strong> {{ cols }}</span>
+      <span class="dz-error" id="err-{{ key }}" role="alert" hidden></span>
       <span class="dz-meta" id="meta-{{ key }}" hidden>
         <span class="dz-meta-line"><strong data-k="rows"></strong> lignes · <span data-k="range"></span></span>
         <span class="dz-meta-line dz-format" data-k="format"></span>
@@ -93,7 +96,7 @@
 
   <div class="upload-footer">
     <p class="muted" id="submitSummary">Dépose les deux fichiers pour choisir la période.</p>
-    <button class="btn primary" type="submit">Lancer le mapping des noms →</button>
+    <button class="btn primary" type="submit" id="submitBtn" disabled>Lancer le mapping des noms →</button>
   </div>
 </form>
 {% endblock %}
