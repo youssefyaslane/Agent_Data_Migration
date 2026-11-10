@@ -13,6 +13,8 @@ Usage :
 """
 import argparse
 import json
+import re
+from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -59,48 +61,139 @@ def system_name(path: Path) -> str:
 
 def load_sap(path: Path) -> pd.DataFrame:
     df = pd.read_excel(path, dtype={"Journal Entry": str, "Supplier": str})
-    return pd.DataFrame({
+    dates = parse_dates(df["Journal Entry Date"], prefer="mdy")
+    out = pd.DataFrame({
         "Supplier": df["Supplier"],
         "Supplier Name": df["Supplier Name"],
-        "Journal Entry Date": pd.to_datetime(df["Journal Entry Date"]),
+        "Journal Entry Date": dates,
         "Journal Entry": df["Journal Entry"],
         "Amount (CoCode Crcy)": pd.to_numeric(df["Amount (CoCode Crcy)"]),
         "System": system_name(path),
         # interne (non écrit) : écriture soldée/annulée dans SAP
         "_cleared": df["Clearing Status"].astype(str).str.strip().eq("1"),
     })
+    out.attrs["dates"] = dates.attrs["dates"]
+    return out
 
 
-def parse_us_dates(col: pd.Series) -> pd.Series:
-    """Dates exportées au format américain MM/JJ/AAAA (cas de QuickBooks).
+NUM_DATE = re.compile(r"^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2}|\d{4})(?:[ T].*)?$")
+ISO_DATE = re.compile(r"^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T].*)?$")
 
-    Si le fichier a été ouvert dans un Excel réglé en français, Excel a converti
-    en vraies dates celles dont le jour est <= 12, en inversant jour et mois
-    (10/01/2025 = 1er octobre devient le 10 janvier), et laissé les autres en
-    texte (09/26/2025 n'existe pas en JJ/MM). On lit donc le texte en MM/JJ/AAAA
-    et, quand on voit ce mélange, on remet jour et mois des vraies dates à l'endroit.
+
+def parse_dates(col: pd.Series, prefer: str = "mdy") -> pd.Series:
+    """Lit une colonne de dates venant d'Excel, en français ou en anglais.
+
+    - vraies dates Excel, numéros de série Excel (45992), texte ISO (2025-11-01) ;
+    - texte jj/mm/aaaa (français) ou mm/jj/aaaa (anglais), séparateurs / - . :
+      l'ordre est détecté sur la colonne (un 1er nombre > 12 = jour d'abord,
+      un 2e nombre > 12 = mois d'abord) ; s'il reste ambigu, on prend `prefer` ;
+    - fichier ouvert dans un Excel d'une autre langue : Excel a converti en vraies
+      dates, jour et mois inversés, celles qu'il pouvait (jour <= 12) et laissé
+      les autres en texte. On le reconnaît au mélange texte + vraies dates toutes
+      avec un jour <= 12 qui, inversées, tombent dans la période du texte : on
+      les remet alors à l'endroit.
+
+    Le résultat porte un résumé dans .attrs["dates"] (affiché dans l'app).
     """
-    is_text = col.map(lambda v: isinstance(v, str))
-    text = pd.to_datetime(col[is_text].str.strip(), format="%m/%d/%Y", errors="coerce")
-    real = pd.to_datetime(col[~is_text], errors="coerce")
-    known = real.dropna()
-    if is_text.any() and len(known) and (known.dt.day <= 12).all():
-        real = real.map(lambda d: d.replace(month=d.day, day=d.month) if pd.notna(d) else d)
-    return pd.concat([text, real]).reindex(col.index)
+    out = pd.Series(pd.NaT, index=col.index, dtype="datetime64[ns]")
+    info = {"real": 0, "serial": 0, "iso": 0, "dmy": 0, "mdy": 0, "swapped": 0, "invalid": 0, "empty": 0}
+    real_idx, num_text = [], {}
+    for i, v in col.items():
+        if v is None or (isinstance(v, float) and pd.isna(v)) or (isinstance(v, str) and not v.strip()):
+            info["empty"] += 1
+        elif isinstance(v, (datetime, date, pd.Timestamp)):
+            out[i] = pd.Timestamp(v)
+            real_idx.append(i)
+        elif isinstance(v, (int, float)) and 20000 < v < 80000:      # numéro de série Excel
+            out[i] = pd.Timestamp("1899-12-30") + pd.to_timedelta(int(v), unit="D")
+            info["serial"] += 1
+        elif isinstance(v, str) and (m := ISO_DATE.match(v.strip())):
+            try:
+                out[i] = pd.Timestamp(int(m[1]), int(m[2]), int(m[3]))
+                info["iso"] += 1
+            except ValueError:
+                info["invalid"] += 1
+        elif isinstance(v, str) and (m := NUM_DATE.match(v.strip())):
+            num_text[i] = (int(m[1]), int(m[2]), int(m[3]) + (2000 if len(m[3]) == 2 else 0))
+        else:
+            info["invalid"] += 1
+
+    # ordre jour/mois du texte, détecté sur toute la colonne
+    day_first = any(a > 12 for a, _, _ in num_text.values())
+    month_first = any(b > 12 for _, b, _ in num_text.values())
+    order = "dmy" if day_first and not month_first else "mdy" if month_first and not day_first else None
+    for i, (a, b, y) in num_text.items():
+        o = order or ("dmy" if a > 12 else "mdy" if b > 12 else prefer)   # colonne mélangée : ligne par ligne
+        day, month = (a, b) if o == "dmy" else (b, a)
+        try:
+            out[i] = pd.Timestamp(y, month, day)
+            info[o] += 1
+        except ValueError:
+            info["invalid"] += 1
+    info["order"] = order or ("mixte" if day_first else prefer)
+
+    # vraies dates inversées par un Excel d'une autre langue
+    text_dates = out[list(num_text)].dropna()
+    real = out[real_idx]
+    if len(text_dates) and len(real) and (real.dt.day <= 12).all():
+        swapped = real.map(lambda d: d.replace(month=d.day, day=d.month))
+        lo, hi = text_dates.min() - pd.Timedelta(days=45), text_dates.max() + pd.Timedelta(days=45)
+        if swapped.between(lo, hi).sum() > real.between(lo, hi).sum():
+            out[real_idx] = swapped
+            info["swapped"] = len(real_idx)
+    info["real"] = len(real_idx) - info["swapped"]
+    out.attrs["dates"] = info
+    return out
+
+
+def describe_dates(info: dict) -> str:
+    """Résumé lisible de ce que parse_dates a trouvé."""
+    def n(key, one, many):
+        k = info.get(key, 0)
+        return f"{k} {one if k == 1 else many}" if k else None
+    parts = [
+        n("real", "vraie date Excel", "vraies dates Excel"),
+        n("serial", "numéro de date Excel", "numéros de date Excel"),
+        n("iso", "date AAAA-MM-JJ", "dates AAAA-MM-JJ"),
+        n("dmy", "date en texte français (JJ/MM/AAAA)", "dates en texte français (JJ/MM/AAAA)"),
+        n("mdy", "date en texte anglais (MM/JJ/AAAA)", "dates en texte anglais (MM/JJ/AAAA)"),
+        n("swapped", "date inversée par Excel (jour/mois), remise à l’endroit",
+          "dates inversées par Excel (jour/mois), remises à l’endroit"),
+        n("invalid", "date illisible", "dates illisibles"),
+        n("empty", "date vide", "dates vides"),
+    ]
+    return " · ".join(x for x in parts if x) or "aucune date"
 
 
 def load_qbs(path: Path) -> pd.DataFrame:
     df = pd.read_excel(path)
     debit = pd.to_numeric(df["Debit"], errors="coerce").fillna(0)
     credit = pd.to_numeric(df["Credit"], errors="coerce").fillna(0)
-    return pd.DataFrame({
+    dates = parse_dates(df["Date"], prefer="mdy")   # QuickBooks : anglais si ambigu
+    out = pd.DataFrame({
         "Supplier": None,
         "Supplier Name": df["Name"],
-        "Journal Entry Date": parse_us_dates(df["Date"]),
+        "Journal Entry Date": dates,
         "Journal Entry": df["Memo"],
         "Amount (CoCode Crcy)": (debit - credit).round(2),  # = Net (Debit - Credit)
         "System": system_name(path),
     })
+    out.attrs["dates"] = dates.attrs["dates"]
+    return out
+
+
+def filter_period(df: pd.DataFrame, start=None, end=None) -> pd.DataFrame:
+    """Lignes dont la Journal Entry Date est comprise entre start et end (inclus).
+    Sans start ni end : toutes les lignes. Avec une période, les lignes sans date sont exclues."""
+    if start is None and end is None:
+        return df
+    d = pd.to_datetime(df["Journal Entry Date"]).dt.normalize()
+    keep = d.notna()
+    if start is not None:
+        keep &= d >= pd.Timestamp(start)
+    if end is not None:
+        keep &= d <= pd.Timestamp(end)
+    return df[keep].reset_index(drop=True)
 
 
 def clean(value):
@@ -276,10 +369,12 @@ def main():
     parser.add_argument("--mapping", type=Path,
                         help='JSON {"qbs": {nom QBs: nom SAP}, "sap": {doublon SAP: nom SAP}}. '
                              "Sinon : noms enregistrés + LLM pour les nouveaux (sans validation).")
+    parser.add_argument("--du", help="début de la période (AAAA-MM-JJ), d'après Journal Entry Date")
+    parser.add_argument("--au", help="fin de la période (AAAA-MM-JJ), incluse")
     args = parser.parse_args()
 
-    sap = load_sap(args.sap)
-    qbs = load_qbs(args.qbs)
+    sap = filter_period(load_sap(args.sap), args.du, args.au)
+    qbs = filter_period(load_qbs(args.qbs), args.du, args.au)
     if args.mapping:
         m = json.loads(args.mapping.read_text(encoding="utf-8"))
         mapping, sap_aliases = m.get("qbs", {}), m.get("sap", {})

@@ -61,10 +61,15 @@ statuts encore vides :
 | SAP (`.xlsx`) | `Supplier`, `Supplier Name`, `Journal Entry Date`, `Journal Entry`, `Amount (CoCode Crcy)`, `Clearing Status` |
 | QBs (`.xlsx`) | `Name`, `Date`, `Memo`, `Debit`, `Credit` (montant = Debit − Credit) |
 
-**Dates QBs.** QuickBooks exporte les dates au format américain `MM/JJ/AAAA`. Si le fichier passe
-par un Excel en français, les dates dont le jour est ≤ 12 sont converties avec jour et mois inversés
-(`10/01/2025` = 1er octobre devient le 10 janvier) et les autres restent en texte. Le script détecte
-ce mélange, lit le texte en `MM/JJ/AAAA` et remet jour et mois des dates converties à l'endroit. Dans l'Excel de sortie, les dates sont affichées en `JJ/MM/AAAA`.
+**Dates SAP et QBs (français / anglais).** Les deux fichiers passent par la même lecture des dates :
+vraies dates Excel, numéros de série Excel, `AAAA-MM-JJ`, ou texte `JJ/MM/AAAA` (français) /
+`MM/JJ/AAAA` (anglais), séparateurs `/ - .`. L'ordre jour/mois est détecté sur la colonne
+(un 1er nombre > 12 = jour d'abord, un 2e nombre > 12 = mois d'abord ; si tout est ambigu :
+anglais). Quand un fichier a été ouvert dans un Excel d'une autre langue, Excel convertit en
+vraies dates, jour et mois inversés, celles dont le jour est ≤ 12 et laisse les autres en texte :
+le script reconnaît ce mélange et remet ces dates à l'endroit. Le format détecté pour chaque
+fichier est affiché dans le bloc Période de l'app. Dans l'Excel de sortie, les dates sont
+affichées en `JJ/MM/AAAA`.
 
 ## Installation
 
@@ -98,7 +103,11 @@ conservés quand le conteneur est reconstruit.
 
 Puis ouvrir http://127.0.0.1:8080 :
 
-1. Charger le fichier SAP et le fichier QBs.
+1. Charger le fichier SAP et le fichier QBs. Dès que les deux sont déposés, l'app lit la colonne
+   `Journal Entry Date` et propose une **période** : champs Du / Au (pré-remplis avec toute la période
+   trouvée), raccourcis par mois et nombre de lignes SAP / QBs comprises, mis à jour en direct.
+   Le mapping, les Status et l'Excel ne portent que sur cette période (rappelée en haut des étapes
+   suivantes et dans le nom du fichier téléchargé).
 2. Attendre la fin du mapping (seuls les nouveaux noms sont envoyés au LLM).
 3. Vérifier ou corriger les correspondances (badge « Modifié » sur chaque proposition changée), puis
    **Suivant**. La case « Afficher aussi les noms déjà validés » permet de corriger un ancien choix.
@@ -122,6 +131,10 @@ docker compose exec app python script/merge_files.py
 # fichiers et mapping au choix
 docker compose exec app python script/merge_files.py --sap data/sap.xlsx --qbs data/QBs.xlsx \
     --out output/output.xlsx --mapping data/name_mapping.json
+
+# limiter à une période (d'après Journal Entry Date, bornes incluses)
+docker compose exec app python script/merge_files.py --du 2025-11-01 --au 2025-11-30 \
+    --out /tmp/novembre.xlsx --mapping data/name_mapping.json
 ```
 
 Sans `--mapping`, le script reprend les noms enregistrés et demande les nouveaux au LLM,

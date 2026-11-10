@@ -1,33 +1,102 @@
 {% extends "base.html" %}
 
+
 {% block content %}
+{% set cal_icon %}<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"
+  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/>
+  <path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>{% endset %}
 <section class="intro">
   <h1>Charger les exports</h1>
-  <p class="muted">Dépose l'export SAP et l'export QuickBooks. Les fournisseurs déjà validés sont
-    repris directement, seuls les nouveaux noms sont envoyés à l’agent IA.</p>
+  <p class="muted">Dépose l'export SAP et l'export QuickBooks, puis choisis la période à traiter.
+    Les fournisseurs déjà validés sont repris directement, seuls les nouveaux noms sont envoyés à l’agent IA.</p>
 </section>
 
-<form class="card" method="post" enctype="multipart/form-data" data-busy="Envoi…">
+<form class="card upload-card" method="post" enctype="multipart/form-data" data-busy="Envoi…"
+      data-inspect-url="{{ url_for('inspect') }}">
   <div class="dropzones">
-    <label class="dropzone" for="sap">
-      <span class="dz-tag sap">SAP</span>
-      <span class="dz-title">Fichier SAP</span>
+    {% for key, tag, title, cols in [
+        ('sap', 'SAP', 'Fichier SAP', 'Supplier, Supplier Name, Journal Entry Date, Journal Entry, Amount (CoCode Crcy), Clearing Status'),
+        ('qbs', 'QBs', 'Fichier QuickBooks', 'Name, Date, Memo, Debit, Credit')] %}
+    <label class="dropzone" for="{{ key }}">
+      <span class="dz-top">
+        <span class="dz-tag {{ key }}">{{ tag }}</span>
+        <span class="dz-check" aria-hidden="true">✓</span>
+      </span>
+      <span class="dz-title">{{ title }}</span>
       <span class="dz-file" data-empty="Clique ou glisse un fichier .xlsx">Clique ou glisse un fichier .xlsx</span>
-      <span class="dz-hint">Supplier, Supplier Name, Journal Entry Date, Journal Entry,
-        Amount (CoCode Crcy), Clearing Status</span>
-      <input id="sap" name="sap" type="file" accept=".xlsx" required>
+      <span class="dz-hint">{{ cols }}</span>
+      <span class="dz-meta" id="meta-{{ key }}" hidden>
+        <span class="dz-meta-line"><strong data-k="rows"></strong> lignes · <span data-k="range"></span></span>
+        <span class="dz-meta-line dz-format" data-k="format"></span>
+      </span>
+      <input id="{{ key }}" name="{{ key }}" type="file" accept=".xlsx" required>
     </label>
-
-    <label class="dropzone" for="qbs">
-      <span class="dz-tag qbs">QBs</span>
-      <span class="dz-title">Fichier QuickBooks</span>
-      <span class="dz-file" data-empty="Clique ou glisse un fichier .xlsx">Clique ou glisse un fichier .xlsx</span>
-      <span class="dz-hint">Name, Date, Memo, Debit, Credit</span>
-      <input id="qbs" name="qbs" type="file" accept=".xlsx" required>
-    </label>
+    {% endfor %}
   </div>
 
-  <div class="actions">
+  <section class="period" id="period" aria-live="polite" hidden>
+    <header class="period-head">
+      <span class="period-icon" aria-hidden="true">{{ cal_icon }}</span>
+      <div class="period-title">
+        <h2>Période à traiter</h2>
+        <p class="muted" id="periodInfo">Lecture des dates…</p>
+      </div>
+      <button class="link-btn" type="button" id="periodAll" hidden>Toute la période</button>
+    </header>
+
+    <div class="period-body" id="periodBody" hidden>
+      <div class="range" id="range">
+        <div class="range-hist" id="rangeHist" aria-hidden="true"></div>
+        <div class="range-sel" id="timelineSel" aria-hidden="true"></div>
+        <button type="button" class="range-handle" id="hFrom" role="slider" aria-label="Début de la période"></button>
+        <button type="button" class="range-handle" id="hTo" role="slider" aria-label="Fin de la période"></button>
+      </div>
+      <div class="range-months" id="rangeMonths" aria-hidden="true"></div>
+      <p class="range-legend muted">Hauteur des barres = nombre de lignes SAP + QBs par jour · glisse les poignées pour choisir</p>
+
+      <div class="period-controls">
+        <div class="period-dates">
+          <div class="date-field">
+            <label for="dateFromTxt">Du</label>
+            <div class="date-input">
+              <input type="text" id="dateFromTxt" inputmode="numeric" placeholder="jj/mm/aaaa" autocomplete="off" maxlength="10">
+              <button type="button" class="cal-btn" data-picker="pickFrom" aria-label="Choisir la date de début dans le calendrier">{{ cal_icon }}</button>
+              <input type="date" class="picker" id="pickFrom" tabindex="-1" aria-hidden="true">
+            </div>
+          </div>
+          <span class="period-arrow" aria-hidden="true">→</span>
+          <div class="date-field">
+            <label for="dateToTxt">Au</label>
+            <div class="date-input">
+              <input type="text" id="dateToTxt" inputmode="numeric" placeholder="jj/mm/aaaa" autocomplete="off" maxlength="10">
+              <button type="button" class="cal-btn" data-picker="pickTo" aria-label="Choisir la date de fin dans le calendrier">{{ cal_icon }}</button>
+              <input type="date" class="picker" id="pickTo" tabindex="-1" aria-hidden="true">
+            </div>
+          </div>
+        </div>
+        <div class="period-months">
+          <span class="period-months-label">Mois</span>
+          <div class="segmented" id="periodMonths" role="group" aria-label="Choisir un mois"></div>
+        </div>
+        <input type="hidden" name="date_from" id="dateFrom">
+        <input type="hidden" name="date_to" id="dateTo">
+      </div>
+      <p class="date-error" id="dateError" role="alert" hidden></p>
+
+      <div class="period-summary">
+        <div class="sum sap"><span class="sum-num" id="cntSap">0</span>
+          <span class="sum-lbl">lignes SAP<small>sur <span id="totSap">0</span></small></span></div>
+        <div class="sum qbs"><span class="sum-num" id="cntQbs">0</span>
+          <span class="sum-lbl">lignes QBs<small>sur <span id="totQbs">0</span></small></span></div>
+        <div class="sum days"><span class="sum-num" id="cntDays">0</span>
+          <span class="sum-lbl">jours<small id="sumRange"></small></span></div>
+      </div>
+      <p class="period-count" id="periodCount" hidden></p>
+    </div>
+  </section>
+
+  <div class="upload-footer">
+    <p class="muted" id="submitSummary">Dépose les deux fichiers pour choisir la période.</p>
     <button class="btn primary" type="submit">Lancer le mapping des noms →</button>
   </div>
 </form>

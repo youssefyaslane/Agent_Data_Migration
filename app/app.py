@@ -21,10 +21,12 @@ puis ouvrir http://127.0.0.1:8080   (autre port : variable PORT)
 Modèle : OLLAMA_MODEL (défaut gemma4:e2b), serveur : OLLAMA_URL (défaut http://127.0.0.1:11434)
 """
 import os
+import shutil
 import sys
+import tempfile
 import threading
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -33,7 +35,7 @@ from flask import (Flask, abort, jsonify, redirect, render_template, request, se
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "script"))
-from merge_files import load_qbs, load_sap, write_output  # noqa: E402
+from merge_files import describe_dates, filter_period, load_qbs, load_sap, write_output  # noqa: E402
 from name_mapping import (OLLAMA_MODEL, judge_choice, save_store,  # noqa: E402
                           suggest_mapping, suggest_sap_aliases, unique_names)
 
@@ -58,9 +60,27 @@ STATUS_HINT = {
 }
 
 
+def asset(filename: str) -> str:
+    """URL d'un fichier statique avec sa date de modification (?v=…) : le navigateur
+    recharge le CSS / JS dès qu'il change, au lieu de garder l'ancien en cache."""
+    try:
+        version = int((Path(app.static_folder) / filename).stat().st_mtime)
+    except OSError:
+        version = 0
+    return url_for("static", filename=filename, v=version)
+
+
+@app.after_request
+def no_cache_html(resp):
+    """Pages HTML jamais servies depuis le cache du navigateur (toujours la dernière version)."""
+    if resp.mimetype == "text/html":
+        resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 @app.context_processor
 def common():
-    return {"model": OLLAMA_MODEL}
+    return {"model": OLLAMA_MODEL, "asset": asset}
 
 
 def job_dir(job: str) -> Path:
@@ -78,12 +98,82 @@ def check_upload(field: str):
     return f
 
 
+MONTHS = ("janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc.")
+
+
+def fr_date(d) -> str:
+    return pd.Timestamp(d).strftime("%d/%m/%Y")
+
+
+def read_period(form) -> tuple[date | None, date | None]:
+    """Période choisie sur la page d'upload (champs date_from / date_to, optionnels)."""
+    try:
+        start = date.fromisoformat(form["date_from"]) if form.get("date_from") else None
+        end = date.fromisoformat(form["date_to"]) if form.get("date_to") else None
+    except ValueError:
+        raise ValueError("date de période invalide.") from None
+    if start and end and start > end:
+        raise ValueError(f"la période commence après sa fin ({fr_date(start)} > {fr_date(end)}).")
+    return start, end
+
+
+def period_label(start, end) -> str | None:
+    if start and end:
+        return f"du {fr_date(start)} au {fr_date(end)}"
+    if start:
+        return f"à partir du {fr_date(start)}"
+    if end:
+        return f"jusqu'au {fr_date(end)}"
+    return None
+
+
+def load_job(job: str):
+    """Fichiers SAP et QBs du traitement, limités à la période choisie."""
+    d, start, end = JOBS_DIR / job, *JOBS[job].get("period", (None, None))
+    return (filter_period(load_sap(d / "sap.xlsx"), start, end),
+            filter_period(load_qbs(d / "QBs.xlsx"), start, end))
+
+
+@app.route("/inspect", methods=["POST"])
+def inspect():
+    """Dates trouvées dans les deux fichiers déposés (pour choisir la période)."""
+    try:
+        sap_file, qbs_file = check_upload("sap"), check_upload("qbs")
+        with tempfile.TemporaryDirectory() as tmp:
+            sap_file.save(Path(tmp) / "sap.xlsx")
+            qbs_file.save(Path(tmp) / "QBs.xlsx")
+            sap, qbs = load_sap(Path(tmp) / "sap.xlsx"), load_qbs(Path(tmp) / "QBs.xlsx")
+    except KeyError as e:
+        return jsonify(error=f"colonne introuvable : {e}. Vérifie que SAP et QBs sont dans le bon champ."), 400
+    except Exception as e:
+        return jsonify(error=f"{type(e).__name__} : {e}"), 400
+
+    out, all_dates = {}, []
+    for key, df in (("sap", sap), ("qbs", qbs)):
+        d = pd.to_datetime(df["Journal Entry Date"]).dropna().dt.normalize()
+        all_dates.append(d)
+        info = df.attrs.get("dates", {})
+        out[key] = {"n": len(df), "no_date": int(len(df) - len(d)),
+                    "dates": d.dt.strftime("%Y-%m-%d").tolist(),
+                    "desc": describe_dates(info), "problems": info.get("invalid", 0)}
+    every = pd.concat(all_dates)
+    if every.empty:
+        return jsonify(error="aucune date trouvée dans la colonne Journal Entry Date / Date."), 400
+    months = sorted(every.dt.to_period("M").unique())
+    out.update(
+        min=every.min().strftime("%Y-%m-%d"), max=every.max().strftime("%Y-%m-%d"),
+        min_fr=fr_date(every.min()), max_fr=fr_date(every.max()),
+        months=[{"label": f"{MONTHS[m.month - 1]} {m.year}",
+                 "from": m.start_time.strftime("%Y-%m-%d"), "to": m.end_time.strftime("%Y-%m-%d")}
+                for m in months])
+    return jsonify(out)
+
+
 def run_mapping(job: str) -> None:
     """Thread : lit les noms uniques et demande au LLM les correspondances."""
     state = JOBS[job]
     try:
-        d = JOBS_DIR / job
-        sap, qbs = load_sap(d / "sap.xlsx"), load_qbs(d / "QBs.xlsx")
+        sap, qbs = load_job(job)
         sap_names, qbs_names = unique_names(sap["Supplier Name"]), unique_names(qbs["Supplier Name"])
         state.update(total=len(qbs_names), sap_names=sap_names)
 
@@ -116,6 +206,7 @@ def index():
         return render_template("upload.html", step=1)
     try:
         sap_file, qbs_file = check_upload("sap"), check_upload("qbs")
+        start, end = read_period(request.form)
     except ValueError as e:
         return render_template("upload.html", step=1, error=str(e)), 400
 
@@ -125,7 +216,17 @@ def index():
     # noms fixes -> colonne System = "SAP" / "QBs"
     sap_file.save(d / "sap.xlsx")
     qbs_file.save(d / "QBs.xlsx")
-    JOBS[job] = {"state": "running", "done": 0, "total": 0, "current": ""}
+    JOBS[job] = {"state": "running", "done": 0, "total": 0, "current": "",
+                 "period": (start, end), "period_label": period_label(start, end)}
+    try:
+        sap, qbs = load_job(job)
+    except Exception:
+        sap = qbs = None   # erreur de colonnes : affichée par le traitement
+    if sap is not None and sap.empty and qbs.empty:
+        del JOBS[job]
+        shutil.rmtree(d, ignore_errors=True)
+        return render_template("upload.html", step=1,
+                               error=f"aucune ligne SAP ni QBs {period_label(start, end)}."), 400
     threading.Thread(target=run_mapping, args=(job,), daemon=True).start()
     return redirect(url_for("review", job=job))
 
@@ -154,7 +255,7 @@ def review(job):
     aliases = [{"name": n, "sap": v["sap"], "source": v["source"], "is_ai": n in ai_alias,
                 "ai": ai_alias.get(n), "orig": saved_alias.get(n)} for n, v in s["aliases"].items()]
     return render_template(
-        "review.html", step=3, job=job, rows=rows, aliases=aliases, sap_names=choices(s),
+        "review.html", step=3, job=job, period=s.get("period_label"), rows=rows, aliases=aliases, sap_names=choices(s),
         n_llm=sum(r["source"] == "LLM" for r in rows),
         n_saved=sum(r["source"] == "enregistré" for r in rows),
         n_none_new=sum(not r["sap"] and r["source"] == "LLM" for r in rows))
@@ -264,7 +365,7 @@ def score_view(job):
                                hint="Chaque choix modifié est envoyé à l’agent IA avec le nom de base.")
     changes = judge["changes"]
     p["mod_score"] = mod_score(changes)
-    return render_template("score.html", step=4, job=job, changes=changes, mod=p["mod_score"],
+    return render_template("score.html", step=4, job=job, period=s.get("period_label"), changes=changes, mod=p["mod_score"],
                            n_checked=sum(c.get("ia_score") is not None for c in changes),
                            ai_kept=p["ai_kept"], ai_total=p["ai_total"], judge_error=judge.get("error"))
 
@@ -290,7 +391,7 @@ def save(job):
 
     save_store(mapping, aliases)  # réutilisé au prochain traitement
     try:
-        sap, qbs = load_sap(d / "sap.xlsx"), load_qbs(d / "QBs.xlsx")
+        sap, qbs = load_job(job)
         write_output(sap, qbs, d / "output.xlsx", mapping, aliases)
     except Exception as e:
         return render_template("upload.html", step=1, error=f"{type(e).__name__} : {e}"), 500
@@ -301,7 +402,8 @@ def save(job):
     statuses = [x for x in STATUS_ORDER if x in present]
     table = {sys_: counts[sys_].to_dict() for sys_ in counts.index.get_level_values(0).unique()}
     totals = {st: sum(c.get(st, 0) for c in table.values()) for st in statuses}
-    return render_template("result.html", step=5, job=job, n_sap=len(sap), n_qbs=len(qbs),
+    return render_template("result.html", step=5, job=job, period=s.get("period_label"),
+                           n_sap=len(sap), n_qbs=len(qbs),
                            statuses=statuses, table=table, totals=totals,
                            status_class=STATUS_CLASS, status_hint=STATUS_HINT,
                            ai_kept=p["ai_kept"], ai_total=p["ai_total"], mod=p.get("mod_score"))
@@ -312,8 +414,10 @@ def download(job):
     path = job_dir(job) / "output.xlsx"
     if not path.exists():
         abort(404)
+    start, end = JOBS.get(job, {}).get("period", (None, None))
+    span = f"_{start or 'debut'}_{end or 'fin'}" if (start or end) else ""
     return send_file(path, as_attachment=True,
-                     download_name=f"output_{datetime.now():%Y%m%d_%H%M}.xlsx")
+                     download_name=f"output{span}_{datetime.now():%Y%m%d_%H%M}.xlsx")
 
 
 if __name__ == "__main__":

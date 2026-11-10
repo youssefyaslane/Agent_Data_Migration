@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Réconciliation SAP / QBs{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ asset('style.css') }}">
 </head>
 <body>
   <header class="topbar">
     <div class="topbar-inner">
       <a class="brand" href="{{ url_for('index') }}">
-        <img class="brand-logo" src="{{ url_for('static', filename='img/logo-netis.png') }}" alt="Netis">
+        <img class="brand-logo" src="{{ asset('img/logo-netis.png') }}" alt="Netis">
         <span class="brand-title">Réconciliation <strong>SAP / QBs</strong></span>
       </a>
       <span class="chip" title="Modèle utilisé pour le mapping des noms : {{ model }}">Agent IA</span>
@@ -31,9 +31,14 @@
     <div class="alert" role="alert"><strong>Erreur :</strong> {{ error }}</div>
     {% endif %}
 
+    {% if period %}
+    <div class="period-banner">Période traitée : <strong>{{ period }}</strong>
+      <span class="muted">(d’après Journal Entry Date)</span></div>
+    {% endif %}
+
     {% block content %}{% endblock %}
   </main>
 
-  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script src="{{ asset('app.js') }}"></script>
 </body>
 </html>
