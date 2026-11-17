@@ -49,10 +49,11 @@ app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 Mo
 JOBS: dict[str, dict] = {}
 
 # ordre d'affichage, classe CSS et explication de chaque Status
-STATUS_ORDER = ("OK", "Reversed", "NOK", "0", "(vide)")
-STATUS_CLASS = {"OK": "ok", "Reversed": "rev", "NOK": "nok", "0": "zero", "(vide)": "empty"}
+STATUS_ORDER = ("OK", "OK-TBC", "Reversed", "NOK", "0", "(vide)")
+STATUS_CLASS = {"OK": "ok", "OK-TBC": "tbc", "Reversed": "rev", "NOK": "nok", "0": "zero", "(vide)": "empty"}
 STATUS_HINT = {
     "OK": "SAP = QBs, même clé",
+    "OK-TBC": "même total NOK par nom, à confirmer",
     "Reversed": "écritures SAP annulées",
     "NOK": "sans correspondance",
     "0": "montant égal à 0",

@@ -2,7 +2,7 @@
 
 Outil de rapprochement des écritures fournisseurs entre un export **SAP** et un export **QuickBooks (QBs)**.
 Il fusionne les deux fichiers Excel, rapproche les noms de fournisseurs avec un LLM local (Ollama)
-et calcule un statut pour chaque ligne : `OK`, `Reversed`, `NOK` ou `0`.
+et calcule un statut pour chaque ligne : `OK`, `OK-TBC`, `Reversed`, `NOK` ou `0`.
 
 Deux façons de l'utiliser :
 
@@ -45,7 +45,8 @@ statuts encore vides :
 | 2 | SAP | Lignes vides groupées par `Supplier` : la somme des montants = 0 | `Reversed` |
 | 3 | QBs | Aucune ligne SAP avec la même clé (même nom, même date, montant à 3 près) | `NOK` |
 | 4 | SAP | Par `Supplier`, triées par date : deux lignes de montants opposés (x / -x) sont annulées, on recommence jusqu'à ce qu'il n'y ait plus de paire | `Reversed`, le reste `NOK` |
-| 5 | SAP + QBs | `Amount (CoCode Crcy)` = 0 (remplace le statut précédent) | `0` |
+| 5 | SAP + QBs | Lignes `NOK` groupées par `deuxieme_name` : somme des NOK SAP = somme des NOK QBs, à 3 près, avec au moins une ligne de chaque côté (la date est ignorée) | `OK-TBC` (à confirmer) |
+| 6 | SAP + QBs | `Amount (CoCode Crcy)` = 0 (remplace le statut précédent) | `0` |
 
 ### 3. Fichier de sortie
 

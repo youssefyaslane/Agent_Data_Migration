@@ -269,6 +269,8 @@ def compute_status(rows: pd.DataFrame, sap_system: str, tolerance: float = TOLER
     écart <= tolerance) -> "NOK".
     Puis, lignes SAP encore vides, par Supplier et date croissante : deux lignes
     consécutives x / -x -> "Reversed" (répété jusqu'à épuisement), le reste -> "NOK".
+    Puis, lignes NOK groupées par deuxieme_name : somme NOK SAP = somme NOK QBs
+    (écart <= tolerance, au moins une ligne de chaque côté) -> "OK-TBC".
     Enfin, toute ligne avec Amount (CoCode Crcy) = 0 -> 0.
 
     Si plusieurs lignes SAP sont candidates au même écart, on prend d'abord celle non soldée.
@@ -348,6 +350,20 @@ def compute_status(rows: pd.DataFrame, sap_system: str, tolerance: float = TOLER
                     break
         for i in lines:
             status[i] = "NOK"
+
+    # Lignes restées NOK (SAP et QBs) : groupées par deuxieme_name. Si la somme des
+    # NOK SAP et la somme des NOK QBs sont égales à <= tolerance près, avec au moins
+    # une ligne de chaque côté -> "OK-TBC" sur toutes ces lignes (la date est ignorée).
+    nok = {}
+    for i, ((name, _), sys_) in enumerate(zip(keys, rows["System"])):
+        if status[i] == "NOK" and pd.notna(name):
+            nok.setdefault(name, ([], []))[sys_ != sap_system].append(i)
+    for sap_idx, qbs_idx in nok.values():
+        if sap_idx and qbs_idx:
+            gap = sum(amt2.iat[i] for i in sap_idx) - sum(amt2.iat[j] for j in qbs_idx)
+            if round(abs(gap), 2) <= tolerance:
+                for i in sap_idx + qbs_idx:
+                    status[i] = "OK-TBC"
 
     # Dernière règle : Amount (CoCode Crcy) = 0 -> Status 0 (SAP et QBs),
     # quel que soit le statut trouvé avant.

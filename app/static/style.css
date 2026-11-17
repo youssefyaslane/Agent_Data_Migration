@@ -12,6 +12,7 @@
   --accent-hover: #2349c7;
   --accent-soft: #eaf0ff;
   --ok: #157a3e;      --ok-soft: #e7f6ed;
+  --tbc: #0e7490;     --tbc-soft: #e3f4f8;
   --rev: #9a5b00;     --rev-soft: #fdf3e1;
   --nok: #b42318;     --nok-soft: #fdecea;
   --zero: #4b5563;    --zero-soft: #eef0f3;
@@ -35,6 +36,7 @@
     --accent-hover: #87a1ff;
     --accent-soft: #1e2a4a;
     --ok: #4cc77f;      --ok-soft: #14301f;
+    --tbc: #4fc3dc;     --tbc-soft: #10303a;
     --rev: #f0b44c;     --rev-soft: #33270f;
     --nok: #f2776b;     --nok-soft: #3a1a17;
     --zero: #aab3bf;    --zero-soft: #252c36;
@@ -565,6 +567,7 @@ main {
 .stat-label { display: block; font-weight: 600; margin-top: 2px; }
 .stat-hint { display: block; font-size: .8rem; color: var(--muted); }
 .stat.ok { border-left-color: var(--ok); }    .stat.ok .stat-num { color: var(--ok); }
+.stat.tbc { border-left-color: var(--tbc); }  .stat.tbc .stat-num { color: var(--tbc); }
 .stat.rev { border-left-color: var(--rev); }  .stat.rev .stat-num { color: var(--rev); }
 .stat.nok { border-left-color: var(--nok); }  .stat.nok .stat-num { color: var(--nok); }
 .stat.zero, .stat.empty { border-left-color: var(--zero); }
@@ -639,6 +642,7 @@ select {
   color: var(--accent);
 }
 .badge.saved, .badge.ok { background: var(--ok-soft); color: var(--ok); }
+.badge.tbc { background: var(--tbc-soft); color: var(--tbc); }
 .badge.rev { background: var(--rev-soft); color: var(--rev); }
 .badge.nok { background: var(--nok-soft); color: var(--nok); }
 .badge.zero, .badge.empty { background: var(--zero-soft); color: var(--zero); }
