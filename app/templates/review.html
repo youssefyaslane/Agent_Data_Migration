@@ -64,34 +64,6 @@
     <p class="empty muted" id="noResult" hidden>Aucune ligne à afficher avec ces filtres.</p>
   </div>
 
-  {% if aliases %}
-  <div class="card">
-    <h2>Fiches SAP en double ?</h2>
-    <p class="muted">Ces fournisseurs SAP n'ont pas de nom QBs. Si une fiche est un doublon d'une autre
-      (ex. « GVA Rwanda » et « GVA RWANDA LTD »), choisis la fiche principale ; sinon laisse « non ».</p>
-
-    <table id="alias">
-      <thead>
-        <tr><th>Fournisseur SAP</th><th>Même fournisseur que</th><th class="hide-sm">Source</th></tr>
-      </thead>
-      <tbody>
-        {% for a in aliases %}
-        <tr data-saved="{{ 1 if a.source == 'enregistré' else 0 }}">
-          <td class="name">{{ a.name }}<input type="hidden" name="n{{ loop.index0 }}" value="{{ a.name }}"></td>
-          <td>
-            <select name="a{{ loop.index0 }}" {% if a.is_ai %}data-ai="{{ a.ai or '' }}"{% else %}data-orig="{{ a.orig or '' }}"{% endif %} aria-label="Fiche principale pour {{ a.name }}">
-              <option value="">— non, fournisseur distinct —</option>
-              {% for s in sap_names if s != a.name %}<option value="{{ s }}" {{ 'selected' if s == a.sap }}>{{ s }}</option>{% endfor %}
-            </select>
-          </td>
-          <td class="hide-sm">{% if a.is_ai %}{% set edited = (a.sap or None) != (a.ai or None) %}<span class="badge ai-badge {{ 'edited' if edited }}">{{ 'Modifié' if edited else 'Agent IA' }}</span>{% else %}{% set edited = (a.sap or None) != (a.orig or None) %}<span class="badge saved-badge {{ 'edited' if edited else 'saved' }}">{{ 'Modifié' if edited else a.source }}</span>{% endif %}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% endif %}
-
   <div class="actionbar">
     <span class="muted">Quand tu as fini tes modifications : l’étape suivante calcule le score de l’agent IA.</span>
     <div class="actions">

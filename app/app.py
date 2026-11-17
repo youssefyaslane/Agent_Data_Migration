@@ -3,8 +3,7 @@
 Parcours :
   1. Upload des deux fichiers Excel.
   2. Noms fournisseurs uniques des deux fichiers -> le LLM propose le nom SAP
-     correspondant à chaque nom QBs (en arrière-plan, avec progression),
-     puis, pour les fiches SAP non utilisées, s'il s'agit d'un doublon SAP.
+     correspondant à chaque nom QBs (en arrière-plan, avec progression).
   3. Écran de validation : on corrige si besoin, puis "Suivant".
   4. Score IA : précision de l'agent IA (propositions gardées / modifiées).
   5. "Enregistrer et calculer" : le mapping validé est enregistré
@@ -37,7 +36,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "script"))
 from merge_files import describe_dates, filter_period, load_qbs, load_sap, write_output  # noqa: E402
 from name_mapping import (OLLAMA_MODEL, judge_choice, save_store,  # noqa: E402
-                          suggest_mapping, suggest_sap_aliases, unique_names)
+                          suggest_mapping, unique_names)
 
 JOBS_DIR = ROOT / "output" / "app"
 JOBS_DIR.mkdir(parents=True, exist_ok=True)
@@ -197,16 +196,11 @@ def run_mapping(job: str) -> None:
 
         state["phase"] = "Noms QBs"
         state["suggestions"] = suggest_mapping(sap_names, qbs_names, progress)
-        used = {v["sap"] for v in state["suggestions"].values() if v["sap"]}
-        state.update(phase="Doublons SAP", done=0, total=0)
-        state["aliases"] = suggest_sap_aliases(sap_names, used, progress)
         # propositions d'origine de l'agent IA : base du score de précision,
         # gardées même si l'utilisateur revient modifier le mapping
         state["ai_map"] = {q: v["sap"] for q, v in state["suggestions"].items() if v["source"] == "LLM"}
-        state["ai_alias"] = {n: v["sap"] for n, v in state["aliases"].items() if v["source"] == "LLM"}
         # choix déjà enregistrés au chargement : pour détecter leurs modifications
         state["saved_map"] = {q: v["sap"] for q, v in state["suggestions"].items() if v["source"] != "LLM"}
-        state["saved_alias"] = {n: v["sap"] for n, v in state["aliases"].items() if v["source"] != "LLM"}
         state["state"] = "ready"
     except KeyError as e:
         state.update(state="error", error=f"colonne introuvable : {e}. Vérifie que SAP et QBs "
@@ -265,33 +259,29 @@ def review(job):
         return render_template("upload.html", step=1, error=s["error"])
     s.pop("pending", None)   # choix modifiables : le score devra être recalculé
     s.pop("judge", None)
-    sugg, ai_map, ai_alias = s["suggestions"], s["ai_map"], s["ai_alias"]
-    saved_map, saved_alias = s["saved_map"], s["saved_alias"]
+    sugg, ai_map, saved_map = s["suggestions"], s["ai_map"], s["saved_map"]
     rows = [{"qbs": q, "sap": v["sap"], "source": v["source"], "is_ai": q in ai_map, "ai": ai_map.get(q),
              "orig": saved_map.get(q)} for q, v in sugg.items()]
     rows.sort(key=lambda r: (r["source"] != "LLM", r["qbs"]))   # nouveaux noms en premier
-    aliases = [{"name": n, "sap": v["sap"], "source": v["source"], "is_ai": n in ai_alias,
-                "ai": ai_alias.get(n), "orig": saved_alias.get(n)} for n, v in s["aliases"].items()]
     return render_template(
-        "review.html", step=3, job=job, period=s.get("period_label"), rows=rows, aliases=aliases, sap_names=choices(s),
+        "review.html", step=3, job=job, period=s.get("period_label"), rows=rows, sap_names=choices(s),
         n_llm=sum(r["source"] == "LLM" for r in rows),
         n_saved=sum(r["source"] == "enregistré" for r in rows),
         n_none_new=sum(not r["sap"] and r["source"] == "LLM" for r in rows))
 
 
-def ai_score(ai_map: dict, mapping: dict, ai_alias: dict, aliases: dict) -> tuple[int, int]:
+def ai_score(ai_map: dict, mapping: dict) -> tuple[int, int]:
     """Précision de l'agent IA : nombre de propositions gardées telles quelles par
-    l'utilisateur, sur le nombre total de propositions (noms QBs + doublons SAP).
+    l'utilisateur, sur le nombre total de propositions (noms QBs).
     « Aucune correspondance » gardé tel quel compte aussi comme juste."""
     pairs = [(v, mapping.get(k)) for k, v in ai_map.items() if k in mapping]
-    pairs += [(v, aliases.get(k)) for k, v in ai_alias.items() if k in aliases]
     return sum((a or None) == (b or None) for a, b in pairs), len(pairs)
 
 
 def choices(s: dict) -> list[str]:
     """Noms SAP proposés dans les listes : ceux du fichier + ceux déjà enregistrés
     (un fournisseur validé peut être absent du fichier SAP de ce mois)."""
-    saved = {v["sap"] for v in list(s["suggestions"].values()) + list(s["aliases"].values()) if v["sap"]}
+    saved = {v["sap"] for v in s["suggestions"].values() if v["sap"]}
     return sorted(set(s["sap_names"]) | saved)
 
 
@@ -320,26 +310,21 @@ def score(job):
     for q, v in pairs("q", "m", s["suggestions"]):
         mapping[q] = v if v in sap_names else None
         s["suggestions"][q] = {"sap": mapping[q], "source": s["suggestions"][q]["source"]}
-    aliases = {}
-    for n, v in pairs("n", "a", s["aliases"]):
-        aliases[n] = v if v in sap_names and v != n else None
-        s["aliases"][n] = {"sap": aliases[n], "source": s["aliases"][n]["source"]}
 
-    kept, total = ai_score(s["ai_map"], mapping, s["ai_alias"], aliases)
+    kept, total = ai_score(s["ai_map"], mapping)
 
     # toutes les modifications : propositions de l'agent IA changées ET choix déjà
     # enregistrés changés. Chacune sera vérifiée par l'agent IA (nom de base + nouveau choix).
     changes = []
     for kind, label, chosen, refs in (
-            ("Nom QBs", "QuickBooks", mapping, [("Agent IA", s["ai_map"]), ("Enregistré", s["saved_map"])]),
-            ("Doublon SAP", "SAP", aliases, [("Agent IA", s["ai_alias"]), ("Enregistré", s["saved_alias"])])):
+            ("Nom QBs", "QuickBooks", mapping, [("Agent IA", s["ai_map"]), ("Enregistré", s["saved_map"])]),):
         for origin, ref in refs:
             for name, before in ref.items():
                 if name in chosen and (before or None) != chosen[name]:
                     changes.append({"kind": kind, "label": label, "name": name, "origin": origin,
                                     "before": before, "after": chosen[name]})
 
-    s["pending"] = {"mapping": mapping, "aliases": aliases, "ai_kept": kept, "ai_total": total}
+    s["pending"] = {"mapping": mapping, "ai_kept": kept, "ai_total": total}
     judge = {"state": "running", "phase": "Vérification", "done": 0, "total": len(changes), "current": "",
              "changes": changes}
     s["judge"] = judge
@@ -405,12 +390,12 @@ def save(job):
         return redirect(url_for("review", job=job))   # passer d'abord par l'étape Score IA
     if s.get("judge", {}).get("state") == "running":
         return redirect(url_for("score_view", job=job))
-    mapping, aliases = p["mapping"], p["aliases"]
+    mapping = p["mapping"]
 
-    save_store(mapping, aliases)  # réutilisé au prochain traitement
+    save_store(mapping)  # réutilisé au prochain traitement
     try:
         sap, qbs = load_job(job)
-        write_output(sap, qbs, d / "output.xlsx", mapping, aliases)
+        write_output(sap, qbs, d / "output.xlsx", mapping)
     except Exception as e:
         return render_template("upload.html", step=1, error=f"{type(e).__name__} : {e}"), 500
 

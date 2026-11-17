@@ -26,7 +26,6 @@ La colonne `deuxieme_name` donne un nom commun : le nom SAP de référence.
 - Les noms fournisseurs uniques des deux fichiers sont extraits (sans doublons).
 - Pour chaque **nouveau** nom QBs, le LLM (`gemma4:e2b` via Ollama) choisit le nom SAP correspondant,
   ou « aucun » si le fournisseur n'existe pas dans SAP.
-- Le LLM signale aussi les fiches SAP en double (ex. `GVA Rwanda` / `GVA RWANDA LTD`).
 - Tu valides ou corriges dans l'app. Les choix sont enregistrés dans `data/name_mapping.json`.
 - **Le mapping se fait une seule fois par nom** : au traitement suivant, les noms déjà validés sont
   repris directement, seuls les nouveaux noms passent par le LLM.

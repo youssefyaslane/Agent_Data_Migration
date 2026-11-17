@@ -373,35 +373,21 @@ def compute_status(rows: pd.DataFrame, sap_system: str, tolerance: float = TOLER
     return status
 
 
-def deuxieme_name(rows: pd.DataFrame, sap_system: str, mapping: dict,
-                  sap_aliases: dict | None = None) -> pd.Series:
-    """SAP : son propre Supplier Name (ou la fiche SAP principale si c'est un doublon).
+def deuxieme_name(rows: pd.DataFrame, sap_system: str, mapping: dict) -> pd.Series:
+    """SAP : son propre Supplier Name.
     QBs : le nom SAP choisi dans le mapping (validé dans l'app ou proposé par le LLM),
     sinon son propre nom."""
-    sap_aliases = sap_aliases or {}
-
-    def canonical(name):
-        seen = set()
-        while sap_aliases.get(name) and name not in seen:   # suit A -> B -> C, sans boucle
-            seen.add(name)
-            name = sap_aliases[name]
-        return name
-
     def one(name, system):
         if pd.isna(name):
             return None
         name = str(name).strip()
-        if system == sap_system:
-            return canonical(name)
-        return canonical(mapping.get(name) or name)
+        return name if system == sap_system else (mapping.get(name) or name)
     return pd.Series([one(n, s) for n, s in zip(rows["Supplier Name"], rows["System"])],
                      index=rows.index)
 
 
-def write_output(sap: pd.DataFrame, qbs: pd.DataFrame, out: Path, mapping: dict,
-                 sap_aliases: dict | None = None) -> None:
-    """mapping = {nom QBs: nom SAP ou None}
-    sap_aliases = {nom SAP en double: nom SAP principal ou None}."""
+def write_output(sap: pd.DataFrame, qbs: pd.DataFrame, out: Path, mapping: dict) -> None:
+    """mapping = {nom QBs: nom SAP ou None}."""
     wb = Workbook()
     ws = wb.active
     ws.title = "Sheet1"
@@ -415,7 +401,7 @@ def write_output(sap: pd.DataFrame, qbs: pd.DataFrame, out: Path, mapping: dict,
 
     sap_system = sap["System"].iloc[0] if len(sap) else system_name(Path("sap"))
     rows = pd.concat([sap, qbs], ignore_index=True)
-    rows.insert(2, "deuxieme_name", deuxieme_name(rows, sap_system, mapping, sap_aliases))
+    rows.insert(2, "deuxieme_name", deuxieme_name(rows, sap_system, mapping))
     status = compute_status(rows, sap_system)
 
     amt, abs_ = col("Amount (CoCode Crcy)"), col("ABS")
@@ -448,7 +434,7 @@ def main():
     parser.add_argument("--qbs", type=Path, default=ROOT / "data" / "QBs.xlsx")
     parser.add_argument("--out", type=Path, default=ROOT / "output" / "output.xlsx")
     parser.add_argument("--mapping", type=Path,
-                        help='JSON {"qbs": {nom QBs: nom SAP}, "sap": {doublon SAP: nom SAP}}. '
+                        help='JSON {"qbs": {nom QBs: nom SAP}}. '
                              "Sinon : noms enregistrés + LLM pour les nouveaux (sans validation).")
     parser.add_argument("--du", help="début de la période (AAAA-MM-JJ), d'après Journal Entry Date")
     parser.add_argument("--au", help="fin de la période (AAAA-MM-JJ), incluse")
@@ -458,22 +444,18 @@ def main():
     qbs = filter_period(load_qbs(args.qbs), args.du, args.au)
     if args.mapping:
         m = json.loads(args.mapping.read_text(encoding="utf-8"))
-        mapping, sap_aliases = m.get("qbs", {}), m.get("sap", {})
+        mapping = m.get("qbs", {})
     else:
-        from name_mapping import suggest_mapping, suggest_sap_aliases, unique_names
+        from name_mapping import suggest_mapping, unique_names
         sap_names = unique_names(sap["Supplier Name"])
         show = lambda what: lambda i, n, name: print(f"\r  {what} {i}/{n}", end="", flush=True)
         sugg = suggest_mapping(sap_names, unique_names(qbs["Supplier Name"]), show("mapping QBs"))
         print()
         mapping = {q: s["sap"] for q, s in sugg.items()}
-        alias = suggest_sap_aliases(sap_names, {v for v in mapping.values() if v}, show("doublons SAP"))
-        print()
-        sap_aliases = {k: s["sap"] for k, s in alias.items()}
-        for kind, d in (("QBs", sugg), ("SAP", alias)):
-            for name, s in d.items():
-                if s["source"] == "LLM":
-                    print(f"  LLM {kind} : {name!r} -> {s['sap']!r}")
-    write_output(sap, qbs, args.out, mapping, sap_aliases)
+        for name, s in sugg.items():
+            if s["source"] == "LLM":
+                print(f"  LLM QBs : {name!r} -> {s['sap']!r}")
+    write_output(sap, qbs, args.out, mapping)
     print(f"{len(sap)} lignes {system_name(args.sap)} + {len(qbs)} lignes "
           f"{system_name(args.qbs)} -> {args.out}")
 

@@ -36,16 +36,6 @@ SAP suppliers:
 
 Given one QuickBooks supplier name, answer with the SAP supplier that is the SAME company, copied exactly, or NONE if no SAP supplier is the same company."""
 
-SAP_PROMPT = """You look for duplicate suppliers inside one SAP system: the same company can have been created twice with a different name.
-The same supplier can be written differently: """ + VARIANTS + """.
-Different companies with only a common generic word (PHARMACY, CLINIC, RWANDA, HOLDING...) are NOT the same.
-
-SAP suppliers:
-{sap_list}
-
-Given one SAP supplier name, answer with ANOTHER SAP supplier of the list that is the SAME company, copied exactly, or NONE."""
-
-
 def unique_names(series) -> list[str]:
     """Noms uniques, sans vides ni doublons (espaces en trop retirés)."""
     names = {str(n).strip() for n in series if pd.notna(n) and str(n).strip()}
@@ -183,27 +173,4 @@ def suggest_mapping(sap_names: list[str], qbs_names: list[str], progress=None) -
             result[name] = {"sap": ask_llm(name, sap_names, system, "QuickBooks"), "source": "LLM"}
         if progress:
             progress(i, len(qbs_names), name)
-    return result
-
-
-def suggest_sap_aliases(sap_names: list[str], used: set, progress=None) -> dict:
-    """Pour chaque nom SAP qu'aucun nom QBs n'utilise : est-ce une autre fiche
-    d'un fournisseur SAP déjà utilisé ? (ex. "GVA Rwanda" = "GVA RWANDA LTD")
-
-    {nom SAP: {"sap": autre nom SAP ou None, "source": ...}}
-    """
-    saved_map = load_store()["sap"]
-    unused = [n for n in sap_names if n not in used]
-    targets = [n for n in sap_names if n in used]
-    system = SAP_PROMPT.format(sap_list=_bullets(targets))
-    result = {}
-    for i, name in enumerate(unused, start=1):
-        if name in saved_map:
-            result[name] = {"sap": saved_map[name], "source": "enregistré"}
-        elif targets:
-            result[name] = {"sap": ask_llm(name, targets, system, "SAP"), "source": "LLM"}
-        else:
-            result[name] = {"sap": None, "source": "LLM"}
-        if progress:
-            progress(i, len(unused), name)
     return result
