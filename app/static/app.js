@@ -351,22 +351,165 @@ if (progressBox) {
   poll();
 }
 
+// Listes avec recherche : le <select> reste (caché, envoyé avec le formulaire) ;
+// un bouton affiche le choix et ouvre un panneau avec un champ de recherche.
+// Un seul panneau partagé par toutes les listes de la page.
+function setupCombos(selects) {
+  if (!selects.length) return;
+  const norm = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const pop = document.createElement("div");
+  pop.className = "combo-pop";
+  pop.hidden = true;
+  pop.innerHTML =
+    '<input type="search" class="combo-search" placeholder="Rechercher un fournisseur SAP…" ' +
+    'aria-label="Rechercher un fournisseur SAP" autocomplete="off">' +
+    '<ul class="combo-list" role="listbox"></ul>' +
+    '<p class="combo-none" hidden>Aucun fournisseur trouvé</p>';
+  document.body.appendChild(pop);
+  const input = pop.querySelector("input");
+  const list = pop.querySelector("ul");
+  const none = pop.querySelector("p");
+  let cur = null;      // { sel, btn } de la liste ouverte
+  let items = [];      // <li> affichés
+  let active = -1;     // <li> surligné au clavier
+
+  const label = (sel) => (sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text : "");
+
+  const place = () => {
+    const r = cur.btn.getBoundingClientRect();
+    const below = innerHeight - r.bottom;
+    const up = below < 220 && r.top > below;
+    const width = Math.max(r.width, 280);
+    pop.style.width = width + "px";
+    pop.style.left = Math.max(8, Math.min(r.left, innerWidth - width - 8)) + "px";
+    pop.style.maxHeight = Math.min(340, (up ? r.top : below) - 12) + "px";
+    pop.style.top = up ? "" : r.bottom + 4 + "px";
+    pop.style.bottom = up ? innerHeight - r.top + 4 + "px" : "";
+  };
+
+  const setActive = (i) => {
+    if (items[active]) items[active].classList.remove("active");
+    active = Math.max(0, Math.min(i, items.length - 1));
+    if (items[active]) {
+      items[active].classList.add("active");
+      items[active].scrollIntoView({ block: "nearest" });
+    }
+  };
+
+  const render = () => {
+    const q = norm(input.value.trim());
+    list.textContent = "";
+    items = [];
+    [...cur.sel.options].forEach((opt, i) => {
+      const text = opt.text;
+      const n = norm(text);
+      const at = q ? n.indexOf(q) : -1;
+      if (q && at < 0) return;
+      const li = document.createElement("li");
+      li.setAttribute("role", "option");
+      li.dataset.i = i;
+      if (!opt.value) li.classList.add("placeholder");
+      if (i === cur.sel.selectedIndex) { li.classList.add("sel"); li.setAttribute("aria-selected", "true"); }
+      if (at >= 0 && n.length === text.length) {   // texte trouvé mis en gras
+        const mark = document.createElement("mark");
+        mark.textContent = text.slice(at, at + q.length);
+        li.append(text.slice(0, at), mark, text.slice(at + q.length));
+      } else {
+        li.textContent = text;
+      }
+      list.appendChild(li);
+      items.push(li);
+    });
+    none.hidden = items.length > 0;
+    active = -1;
+    const selIdx = items.findIndex((li) => li.classList.contains("sel"));
+    setActive(q ? 0 : Math.max(selIdx, 0));
+  };
+
+  const close = (focusBtn) => {
+    if (!cur) return;
+    cur.btn.setAttribute("aria-expanded", "false");
+    if (focusBtn) cur.btn.focus();
+    pop.hidden = true;
+    cur = null;
+  };
+
+  const open = (sel, btn, text = "") => {
+    if (cur) close(false);
+    cur = { sel, btn };
+    btn.setAttribute("aria-expanded", "true");
+    input.value = text;
+    pop.hidden = false;
+    render();
+    place();
+    input.focus();
+  };
+
+  const choose = (li) => {
+    if (!li || !cur) return;
+    const { sel, btn } = cur;
+    if (sel.selectedIndex !== +li.dataset.i) {
+      sel.selectedIndex = +li.dataset.i;
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    btn.firstChild.textContent = label(sel);
+    btn.title = label(sel);
+    close(true);
+  };
+
+  input.addEventListener("input", render);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); setActive(active + 1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setActive(active - 1); }
+    else if (e.key === "Enter") { e.preventDefault(); choose(items[active]); }   // pas d'envoi du formulaire
+    else if (e.key === "Escape") { e.preventDefault(); close(true); }
+    else if (e.key === "Tab") close(false);
+  });
+  list.addEventListener("mousedown", (e) => e.preventDefault());   // garde le focus dans la recherche
+  list.addEventListener("click", (e) => choose(e.target.closest("li")));
+  document.addEventListener("pointerdown", (e) => {
+    if (cur && !pop.contains(e.target) && !cur.btn.contains(e.target)) close(false);
+  });
+  window.addEventListener("resize", () => cur && place());
+  window.addEventListener("scroll", (e) => cur && !pop.contains(e.target) && place(), true);
+
+  selects.forEach((sel) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "combo-btn";
+    btn.setAttribute("aria-haspopup", "listbox");
+    btn.setAttribute("aria-expanded", "false");
+    btn.setAttribute("aria-label", sel.getAttribute("aria-label") || "");
+    btn.title = label(sel);
+    const span = document.createElement("span");
+    span.textContent = label(sel);
+    btn.appendChild(span);
+    sel.classList.add("combo-native");
+    sel.after(btn);
+    btn.addEventListener("click", () => (cur && cur.btn === btn ? close(true) : open(sel, btn)));
+    btn.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); open(sel, btn); }
+      else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && e.key !== " ") {
+        e.preventDefault();
+        open(sel, btn, e.key);   // taper une lettre ouvre la liste avec la recherche
+      }
+    });
+  });
+}
+
 // Validation : filtres, recherche, surlignage des lignes sans correspondance
 const showSaved = document.getElementById("showSaved");
 if (showSaved) {
   const onlyNone = document.getElementById("onlyNone");
-  const search = document.getElementById("search");
   const noResult = document.getElementById("noResult");
 
   const apply = () => {
-    const q = search.value.trim().toLowerCase();
     let visible = 0;
     document.querySelectorAll("tr[data-saved]").forEach((tr) => {
       const inMap = !!tr.closest("#map");
       const hide =
         (tr.dataset.saved === "1" && !showSaved.checked) ||
-        (onlyNone.checked && inMap && !tr.classList.contains("none")) ||
-        (q && !tr.cells[0].textContent.toLowerCase().includes(q));
+        (onlyNone.checked && inMap && !tr.classList.contains("none"));
       tr.hidden = hide;
       if (inMap && !hide) visible++;
     });
@@ -376,6 +519,7 @@ if (showSaved) {
   document.querySelectorAll("#map select").forEach((sel) => {
     sel.addEventListener("change", () => sel.closest("tr").classList.toggle("none", !sel.value));
   });
+  setupCombos(document.querySelectorAll("#map select"));
   // Badge « Modifié » dès qu'un choix diffère de la proposition de l'agent IA
   // ou du choix déjà enregistré (le score est calculé à l'étape « Score IA »)
   document.querySelectorAll("select[data-ai], select[data-orig]").forEach((sel) => {
@@ -393,6 +537,5 @@ if (showSaved) {
   });
 
   [showSaved, onlyNone].forEach((el) => el.addEventListener("change", apply));
-  search.addEventListener("input", apply);
   apply();
 }

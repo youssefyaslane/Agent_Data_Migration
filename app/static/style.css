@@ -582,15 +582,6 @@ main {
   gap: 10px 20px;
   margin-bottom: 14px;
 }
-.toolbar input[type=search] {
-  flex: 1 1 240px;
-  padding: 9px 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-}
 .toggle { display: inline-flex; align-items: center; gap: 7px; font-size: .9rem; cursor: pointer; }
 .toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
 
@@ -629,6 +620,73 @@ select {
   font-size: .9rem;
 }
 .empty { text-align: center; padding: 18px; }
+
+/* Liste avec recherche (remplace l'affichage du <select>, qui reste dans le formulaire) */
+.combo-native { display: none; }
+.combo-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: .9rem;
+  text-align: left;
+  cursor: pointer;
+}
+.combo-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.combo-btn::after {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: -3px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+}
+.combo-btn:hover { border-color: var(--accent); }
+.combo-btn:focus-visible, .combo-btn[aria-expanded=true] {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.combo-pop {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  box-shadow: 0 10px 28px rgba(16, 24, 40, .18);
+  overflow: hidden;
+}
+.combo-pop[hidden] { display: none; }
+.combo-search {
+  flex: none;
+  margin: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: .9rem;
+}
+.combo-search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.combo-list { list-style: none; margin: 0; padding: 0 6px 6px; overflow-y: auto; }
+.combo-list li { padding: 7px 10px; border-radius: 6px; font-size: .9rem; cursor: pointer; }
+.combo-list li.active { background: var(--accent-soft); }
+.combo-list li.sel { font-weight: 600; color: var(--accent); }
+.combo-list li.placeholder { color: var(--muted); font-style: italic; }
+.combo-list mark { background: none; color: inherit; font-weight: 700; text-decoration: underline; }
+.combo-none { margin: 0; padding: 4px 16px 14px; color: var(--muted); font-size: .88rem; }
 
 /* Badges */
 .badge {
