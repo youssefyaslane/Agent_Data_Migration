@@ -307,6 +307,11 @@ def compute_status(rows: pd.DataFrame, sap_system: str, tolerance: float = TOLER
     consécutives x / -x -> "Reversed" (répété jusqu'à épuisement), le reste -> "NOK".
     Puis, lignes NOK groupées par deuxieme_name : somme NOK SAP = somme NOK QBs
     (écart <= tolerance, au moins une ligne de chaque côté) -> "OK-TBC".
+    Puis, lignes encore NOK groupées par deuxieme_name : NOK seulement côté SAP
+    -> "To be reversed", seulement côté QBs -> "To be booked", des deux côtés -> "NOK".
+    Puis, lettrage : une paire OK dont la ligne SAP n'a pas de Clearing Journal Entry
+    (écriture non soldée) -> "NOK" sur les deux lignes. Règle sautée si le fichier SAP
+    n'a aucun Clearing Journal Entry (colonne absente).
     Enfin, toute ligne avec Amount (CoCode Crcy) = 0 -> 0.
 
     Si plusieurs lignes SAP sont candidates au même écart, on prend d'abord celle non soldée.
@@ -330,6 +335,7 @@ def compute_status(rows: pd.DataFrame, sap_system: str, tolerance: float = TOLER
                 and round(abs(a - b), 2) <= tolerance)
 
     status = [None] * len(rows)
+    ok_pairs = []   # (ligne SAP, ligne QBs) appariées en OK, pour la règle du lettrage
     for k, other_idx in other_by_key.items():
         pairs = sorted(
             (round(abs(amt2.iat[i] - amt2.iat[j]), 2), bool(cleared.iat[i]), j, i)
@@ -339,6 +345,7 @@ def compute_status(rows: pd.DataFrame, sap_system: str, tolerance: float = TOLER
             if i not in used and j not in used:
                 used.update((i, j))
                 status[i] = status[j] = "OK"
+                ok_pairs.append((i, j))
 
     # Lignes SAP restées vides : groupées par Supplier,
     # si la somme de Amount (CoCode Crcy) = 0 -> "Reversed"
@@ -400,6 +407,30 @@ def compute_status(rows: pd.DataFrame, sap_system: str, tolerance: float = TOLER
             if round(abs(gap), 2) <= tolerance:
                 for i in sap_idx + qbs_idx:
                     status[i] = "OK-TBC"
+
+    # Lignes encore NOK, groupées par deuxieme_name (date ignorée) :
+    # NOK seulement dans SAP -> "To be reversed" (écriture à extourner dans SAP),
+    # NOK seulement dans QBs -> "To be booked" (écriture à saisir dans SAP),
+    # NOK des deux côtés -> restent "NOK" (vrai écart à analyser).
+    for sap_idx, qbs_idx in nok.values():
+        sap_nok = [i for i in sap_idx if status[i] == "NOK"]   # sans les OK-TBC
+        qbs_nok = [j for j in qbs_idx if status[j] == "NOK"]
+        if sap_nok and not qbs_nok:
+            for i in sap_nok:
+                status[i] = "To be reversed"
+        elif qbs_nok and not sap_nok:
+            for j in qbs_nok:
+                status[j] = "To be booked"
+
+    # Lettrage : paire OK dont la ligne SAP n'a pas de Clearing Journal Entry
+    # (écriture pas soldée dans SAP) -> "NOK" sur la ligne SAP et sur sa ligne QBs.
+    # Sautée si aucune ligne SAP n'a de Clearing Journal Entry (colonne absente de l'export).
+    clearing = rows["Clearing Journal Entry"] if "Clearing Journal Entry" in rows else None
+    is_sap = rows["System"] == sap_system
+    if clearing is not None and clearing[is_sap].notna().any():
+        for i, j in ok_pairs:
+            if status[i] == "OK" and pd.isna(clearing.iat[i]):
+                status[i] = status[j] = "NOK"
 
     # Dernière règle : Amount (CoCode Crcy) = 0 -> Status 0 (SAP et QBs),
     # quel que soit le statut trouvé avant.
