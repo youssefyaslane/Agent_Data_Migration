@@ -15,9 +15,10 @@
 <form class="card upload-card" method="post" enctype="multipart/form-data" data-busy="Envoi…"
       data-inspect-url="{{ url_for('inspect') }}">
   <div class="dropzones">
-    {% for key, tag, title, cols in [
-        ('sap', 'SAP', 'Fichier SAP', 'Supplier, Supplier Name, Journal Entry Date, Journal Entry, Amount (CoCode Crcy), Clearing Status'),
-        ('qbs', 'QBs', 'Fichier QuickBooks', 'Name, Date, Memo, Debit, Credit')] %}
+    {% for key, tag, title, cols, opt in [
+        ('sap', 'SAP', 'Fichier SAP', 'Supplier, Supplier Name, Journal Entry Date, Journal Entry, Amount (CoCode Crcy), Clearing Status',
+         'Amount in Transaction Currency, Amount in Functional Currency, Clearing Journal Entry, G/L Account'),
+        ('qbs', 'QBs', 'Fichier QuickBooks', 'Name, Date, Memo, Debit, Credit', 'Account')] %}
     <label class="dropzone" for="{{ key }}">
       <span class="dz-top">
         <span class="dz-tag {{ key }}">{{ tag }}</span>
@@ -26,7 +27,8 @@
       </span>
       <span class="dz-title">{{ title }}</span>
       <span class="dz-file" data-empty="Clique ou glisse un fichier .xlsx">Clique ou glisse un fichier .xlsx</span>
-      <span class="dz-hint"><strong>Format :</strong> .xlsx · <strong>Colonnes obligatoires :</strong> {{ cols }}</span>
+      <span class="dz-hint"><strong>Format :</strong> .xlsx · <strong>Colonnes obligatoires :</strong> {{ cols }}
+        · <strong>Reprises si présentes :</strong> {{ opt }}</span>
       <span class="dz-error" id="err-{{ key }}" role="alert" hidden></span>
       <span class="dz-meta" id="meta-{{ key }}" hidden>
         <span class="dz-meta-line"><strong data-k="rows"></strong> lignes · <span data-k="range"></span></span>

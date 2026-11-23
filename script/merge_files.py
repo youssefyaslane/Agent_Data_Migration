@@ -29,7 +29,11 @@ COLUMNS = [
     "deuxieme_name",
     "Journal Entry Date",
     "Journal Entry",
+    "G/L Account",
     "Amount (CoCode Crcy)",
+    "Amount in Transaction Currency",
+    "Amount in Functional Currency",
+    "Clearing Journal Entry",
     "System",
     "Status",
     "ABS",
@@ -54,8 +58,9 @@ def col(name: str) -> str:
 
 COL_WIDTHS = {
     "Supplier": 12, "Supplier Name": 26, "deuxieme_name": 34, "Journal Entry Date": 19,
-    "Journal Entry": 40, "Amount (CoCode Crcy)": 22, "System": 10, "Status": 10,
-    "ABS": 16,
+    "Journal Entry": 40, "G/L Account": 30, "Amount (CoCode Crcy)": 22,
+    "Amount in Transaction Currency": 22, "Amount in Functional Currency": 22,
+    "Clearing Journal Entry": 22, "System": 10, "Status": 10, "ABS": 16,
 }
 
 
@@ -69,7 +74,16 @@ REQUIRED_COLUMNS = {
             "Amount (CoCode Crcy)", "Clearing Status"],
     "QBs": ["Name", "Date", "Memo", "Debit", "Credit"],
 }
-AMOUNT_COLUMNS = {"SAP": ["Amount (CoCode Crcy)"], "QBs": ["Debit", "Credit"]}
+# Colonnes reprises telles quelles dans la sortie si elles existent dans l'export
+# (vides sinon) : le fichier n'est pas refusé quand elles manquent.
+OPTIONAL_COLUMNS = {
+    "SAP": ["Amount in Transaction Currency", "Amount in Functional Currency",
+            "Clearing Journal Entry", "G/L Account"],
+    "QBs": ["Account"],
+}
+AMOUNT_COLUMNS = {"SAP": ["Amount (CoCode Crcy)", "Amount in Transaction Currency",
+                          "Amount in Functional Currency"],
+                  "QBs": ["Debit", "Credit"]}
 FILE_LABELS = {"SAP": "SAP", "QBs": "QuickBooks"}
 
 
@@ -92,6 +106,10 @@ def check_file(path: Path, kind: str, **read_kw) -> pd.DataFrame:
         raise FileCheckError(f"le fichier {label} n’est pas un vrai fichier Excel .xlsx "
                              "(fichier abîmé, ou autre format renommé en .xlsx).") from None
     df.columns = [str(c).strip() for c in df.columns]
+    # colonnes facultatives : en-tête reconnu sans tenir compte des majuscules
+    lower = {c.lower(): c for c in df.columns}
+    df = df.rename(columns={lower[c.lower()]: c for c in OPTIONAL_COLUMNS[kind]
+                            if c not in df.columns and c.lower() in lower})
 
     missing = [c for c in REQUIRED_COLUMNS[kind] if c not in df.columns]
     if missing:
@@ -106,7 +124,7 @@ def check_file(path: Path, kind: str, **read_kw) -> pd.DataFrame:
     df = df.dropna(how="all")
     if df.empty:
         raise FileCheckError(f"le fichier {label} ne contient aucune ligne.")
-    for c in AMOUNT_COLUMNS[kind]:
+    for c in (c for c in AMOUNT_COLUMNS[kind] if c in df.columns):
         bad = df[c].notna() & pd.to_numeric(df[c], errors="coerce").isna()
         if bad.any():
             rows = ", ".join(str(i + 2) for i in df.index[bad][:3])   # n° de ligne Excel (en-tête = 1)
@@ -117,6 +135,19 @@ def check_file(path: Path, kind: str, **read_kw) -> pd.DataFrame:
     return df
 
 
+def optional(df: pd.DataFrame, name: str, numeric: bool = False) -> pd.Series:
+    """Colonne facultative de l'export, ou une colonne vide si elle n'existe pas."""
+    if name not in df.columns:
+        return pd.Series(None, index=df.index, dtype=object)
+    return pd.to_numeric(df[name]) if numeric else df[name]
+
+
+def as_text(col: pd.Series) -> pd.Series:
+    """N° lus comme nombres par Excel (1500001234.0) -> texte 1500001234."""
+    return col.map(lambda v: None if pd.isna(v) else
+                   str(int(v)) if isinstance(v, float) and v.is_integer() else str(v).strip())
+
+
 def load_sap(path: Path) -> pd.DataFrame:
     df = check_file(path, "SAP", dtype={"Journal Entry": str, "Supplier": str})
     dates = parse_dates(df["Journal Entry Date"], prefer="mdy")
@@ -125,7 +156,11 @@ def load_sap(path: Path) -> pd.DataFrame:
         "Supplier Name": df["Supplier Name"],
         "Journal Entry Date": dates,
         "Journal Entry": df["Journal Entry"],
+        "G/L Account": as_text(optional(df, "G/L Account")),
         "Amount (CoCode Crcy)": pd.to_numeric(df["Amount (CoCode Crcy)"]),
+        "Amount in Transaction Currency": optional(df, "Amount in Transaction Currency", numeric=True),
+        "Amount in Functional Currency": optional(df, "Amount in Functional Currency", numeric=True),
+        "Clearing Journal Entry": as_text(optional(df, "Clearing Journal Entry")),
         "System": system_name(path),
         # interne (non écrit) : écriture soldée/annulée dans SAP
         "_cleared": df["Clearing Status"].astype(str).str.strip().eq("1"),
@@ -233,6 +268,7 @@ def load_qbs(path: Path) -> pd.DataFrame:
         "Supplier Name": df["Name"],
         "Journal Entry Date": dates,
         "Journal Entry": df["Memo"],
+        "G/L Account": optional(df, "Account"),
         "Amount (CoCode Crcy)": (debit - credit).round(2),  # = Net (Debit - Credit)
         "System": system_name(path),
     })
@@ -405,7 +441,7 @@ def write_output(sap: pd.DataFrame, qbs: pd.DataFrame, out: Path, mapping: dict)
     status = compute_status(rows, sap_system)
 
     amt, abs_ = col("Amount (CoCode Crcy)"), col("ABS")
-    num_cols = (amt, abs_)
+    num_cols = (amt, col("Amount in Transaction Currency"), col("Amount in Functional Currency"), abs_)
     visible = COLUMNS[:COLUMNS.index("System") + 1]   # Supplier ... System
 
     for i, rec in enumerate(rows[visible].itertuples(index=False), start=2):

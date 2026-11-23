@@ -52,7 +52,8 @@ statuts encore vides :
 `output.xlsx` contient les colonnes :
 
 `Supplier` · `Supplier Name` · `deuxieme_name` · `Journal Entry Date` · `Journal Entry` ·
-`Amount (CoCode Crcy)` · `System` · `Status` · `ABS`
+`G/L Account` · `Amount (CoCode Crcy)` · `Amount in Transaction Currency` ·
+`Amount in Functional Currency` · `Clearing Journal Entry` · `System` · `Status` · `ABS`
 
 `System` vaut `SAP` ou `QBs` selon le fichier d'origine. `ABS` est une formule Excel (`=ABS(montant)`).
 
@@ -62,6 +63,10 @@ statuts encore vides :
 |---------|-----------------------|
 | SAP (`.xlsx`) | `Supplier`, `Supplier Name`, `Journal Entry Date`, `Journal Entry`, `Amount (CoCode Crcy)`, `Clearing Status` |
 | QBs (`.xlsx`) | `Name`, `Date`, `Memo`, `Debit`, `Credit` (montant = Debit − Credit) |
+
+Colonnes **facultatives**, recopiées dans la sortie si elles existent (vides sinon, le fichier n'est pas refusé) :
+- SAP : `Amount in Transaction Currency`, `Amount in Functional Currency`, `Clearing Journal Entry`, `G/L Account` ;
+- QBs : `Account`, écrit dans la colonne `G/L Account` de la sortie.
 
 **Contrôle des fichiers.** Chaque fichier est vérifié avant tout traitement (`check_file` dans
 `script/merge_files.py`, à chaque dépôt dans l'app et en ligne de commande). Il est refusé, avec un
