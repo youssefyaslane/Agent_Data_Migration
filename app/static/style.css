@@ -14,8 +14,6 @@
   --ok: #157a3e;      --ok-soft: #e7f6ed;
   --tbc: #0e7490;     --tbc-soft: #e3f4f8;
   --rev: #9a5b00;     --rev-soft: #fdf3e1;
-  --torev: #6d28d9;   --torev-soft: #f1eafe;
-  --tobook: #be185d;  --tobook-soft: #fce7f1;
   --nok: #b42318;     --nok-soft: #fdecea;
   --zero: #4b5563;    --zero-soft: #eef0f3;
   --warn-row: #fff8eb;
@@ -40,8 +38,6 @@
     --ok: #4cc77f;      --ok-soft: #14301f;
     --tbc: #4fc3dc;     --tbc-soft: #10303a;
     --rev: #f0b44c;     --rev-soft: #33270f;
-    --torev: #b794f6;   --torev-soft: #2a1f45;
-    --tobook: #f472b6;  --tobook-soft: #3a1428;
     --nok: #f2776b;     --nok-soft: #3a1a17;
     --zero: #aab3bf;    --zero-soft: #252c36;
     --warn-row: #2b2414;
@@ -573,8 +569,6 @@ main {
 .stat.ok { border-left-color: var(--ok); }    .stat.ok .stat-num { color: var(--ok); }
 .stat.tbc { border-left-color: var(--tbc); }  .stat.tbc .stat-num { color: var(--tbc); }
 .stat.rev { border-left-color: var(--rev); }  .stat.rev .stat-num { color: var(--rev); }
-.stat.torev { border-left-color: var(--torev); }  .stat.torev .stat-num { color: var(--torev); }
-.stat.tobook { border-left-color: var(--tobook); }  .stat.tobook .stat-num { color: var(--tobook); }
 .stat.nok { border-left-color: var(--nok); }  .stat.nok .stat-num { color: var(--nok); }
 .stat.zero, .stat.empty { border-left-color: var(--zero); }
 .stat.accent { border-left-color: var(--accent); } .stat.accent .stat-num { color: var(--accent); }
@@ -708,8 +702,6 @@ select {
 .badge.saved, .badge.ok { background: var(--ok-soft); color: var(--ok); }
 .badge.tbc { background: var(--tbc-soft); color: var(--tbc); }
 .badge.rev { background: var(--rev-soft); color: var(--rev); }
-.badge.torev { background: var(--torev-soft); color: var(--torev); }
-.badge.tobook { background: var(--tobook-soft); color: var(--tobook); }
 .badge.nok { background: var(--nok-soft); color: var(--nok); }
 .badge.zero, .badge.empty { background: var(--zero-soft); color: var(--zero); }
 .badge.edited { background: var(--rev-soft); color: var(--rev); }
